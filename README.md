@@ -6,14 +6,14 @@ on dsx.uk. If better price appears in order book, then cancel existing order and
 
 #### How to use ATS
 For using this ATS you can run sh scripts. 
-1) You have to give permissions to scripts. Run:  
+1) You have to give permissions to scripts. Run in CLI:  
 
     1) chmod +x buildAts.sh
     2) chmod +x startAts.sh
     3) chmod +x shutdownAts.sh
-2) Run buildAts.sh. This script will create jar file.
-3) If you want to launch ATS, then run startAts.sh.
-4) If you want to stop ATS, then run shutdownAts.sh.
+2) Run in CLI: ./buildAts.sh. This script will create jar file.
+3) If you want to launch ATS, then run in CLI: ./startAts.sh.
+4) If you want to stop ATS, then run in CLI: ./shutdownAts.sh.
 #### Config and rateLimit json files usage
 Files config.json and rateLimit.json in ats-example are used for AtsMain class. Files config.json and rateLimit.json in 
 ats folder are used for AtsAlgoTest class, i.e. for testing purposes.
@@ -25,7 +25,6 @@ ats folder are used for AtsAlgoTest class, i.e. for testing purposes.
   
         "pricePercentage": percentage, for which multiply dsx price bid order for condition checking. 
         For example - "1.01" will check if bid order average bigger than dsx bid order * 1.01,
-   
   
         "priceScale": number of decimals after dot for price, e.g. 5,
   
