@@ -1,0 +1,45 @@
+group 'uk.dsx'
+version '1.0-SNAPSHOT'
+
+apply plugin: 'java'
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+task fatJar(type: Jar) {
+    manifest {
+        attributes(
+                "Implementation-Title": "ATS",
+                "Implementation-Version": "1.0",
+                "Main-Class": "uk.dsx.ats.AtsMain"
+        )
+    }
+    baseName = project.name
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+    testCompile group: 'org.mockito', name:'mockito-all', version: '1.8.4'
+    testCompile group: 'org.powermock', name:'powermock-api-mockito', version:'1.6.2'
+    testCompile group: 'org.powermock', name:'powermock-module-junit4', version:'1.6.2'
+
+    compile files("libs/xchange-bitfinex.jar")
+    compile files("libs/xchange-bitstamp.jar")
+    compile files("libs/xchange-dsx.jar")
+    compile files("libs/xchange-kraken.jar")
+
+    compile 'org.glassfish:javax.json:1.0.2'
+
+    // for compiling xchange libs without errors
+    compile group: 'org.slf4j', name: 'slf4j-nop', version: '1.7.25'
+
+    compile "org.apache.logging.log4j:log4j-api:2.7"
+    compile "org.apache.logging.log4j:log4j-core:2.7"
+
+    compileOnly "org.projectlombok:lombok:1.16.16"
+}
