@@ -44,6 +44,7 @@ ats folder are used for AtsAlgoTest class, i.e. for testing purposes.
   
         "volumeToMove": "0.05" volume for order movement. If volume before user's order in order book 
         bigger than volumeToMove, cancel order and place order with new price
+        
         "waitingTimeForOrderCheck": time for checking order status after it was placed.
     
 #### Clarification of rateLimit.json
