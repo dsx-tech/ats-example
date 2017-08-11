@@ -35,6 +35,8 @@ public class PriceProperties {
     @Setter
     long averagePriceUpdateTime = DEFAULT_AVERAGE_PRICE_UPDATE_TIME;
     long timestampForPriceUpdate = DEFAULT_TIMESTAMP_FOR_PRICE_UPDATE;
+    @NonFinal
+    @Setter
     String dsxAccountType = DEFAULT_ACCOUNT_TYPE;
     BigDecimal stepToMove = DEFAULT_STEP_TO_MOVE;
     BigDecimal volumeToMove = DEFAULT_VOLUME_TO_MOVE;

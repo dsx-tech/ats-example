@@ -5,7 +5,7 @@
     "apiKey": "396f12b3-9998-4ff8-800b-f29ab6d8e886"
   },
   "PriceConfig": {
-    "pricePercentage": "1.01",
+    "pricePercentage": "1.001",
     "priceScale": 5,
     "volumeScale": 4,
     "priceAddition": "0.01",
