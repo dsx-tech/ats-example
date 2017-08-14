@@ -12,8 +12,9 @@
     "averagePriceUpdateTime": "3000",
     "timestampForPriceUpdate": "10",
     "dsxAccountType": "DEMO",
-    "stepToMove": "1",
+    "stepToMove": "0.1",
     "volumeToMove": "0.05",
-    "waitingTimeForOrderCheck": "5"
+    "waitingTimeForOrderCheck": "5",
+    "waitingTimeForCheckingAccountFunds": 300
   }
 }

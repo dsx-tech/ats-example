@@ -25,6 +25,7 @@ public class PriceProperties {
     public static final int DEFAULT_PRICE_SCALE = 5;
     public static final long DEFAULT_WAITING_TIME_FOR_ORDER_CHECK = 5L;
     public static final String DEFAULT_ACCOUNT_TYPE = "LIVE";
+    public static final int DEFAULT_NEW_ORDER_TIME = 300;
 
     BigDecimal pricePercentage = DEFAULT_PRICE_PERCENTAGE;
     int priceScale = DEFAULT_PRICE_SCALE;
@@ -41,4 +42,5 @@ public class PriceProperties {
     BigDecimal stepToMove = DEFAULT_STEP_TO_MOVE;
     BigDecimal volumeToMove = DEFAULT_VOLUME_TO_MOVE;
     long waitingTimeForOrderCheck = DEFAULT_WAITING_TIME_FOR_ORDER_CHECK;
+    long waitingTimeForCheckingAccountFunds = DEFAULT_NEW_ORDER_TIME;
 }

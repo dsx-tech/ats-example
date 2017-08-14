@@ -133,18 +133,21 @@ public class AtsMain {
         try {
             logInfo("ATS started");
 
-            algorithm.cancelAllOrders(dsxTradeService);
-            logInfo("Cancelled all active orders");
+            while (true) {
+                algorithm.cancelAllOrders(dsxTradeService);
+                logInfo("Cancelled all active orders");
 
-            Balance balance = getFunds(dsxExchange);
-            logInfo("Account funds: {}", balance);
+                Balance balance = getFunds(dsxExchange);
+                logInfo("Account funds: {}", balance);
 
-            initExchanges(new ArrayList<>(Arrays.asList(KrakenExchange.class, BitfinexExchange.class, BitstampExchange.class)));
-            calculateAveragePriceAsync();
+                initExchanges(new ArrayList<>(Arrays.asList(KrakenExchange.class, BitfinexExchange.class, BitstampExchange.class)));
+                calculateAveragePriceAsync();
 
-            boolean isAlgorithmEnded = false;
-            while (!isAlgorithmEnded) {
-                isAlgorithmEnded = algorithm.executeAlgorithm();
+                boolean isAlgorithmEnded = false;
+                while (!isAlgorithmEnded) {
+                    isAlgorithmEnded = algorithm.executeAlgorithm();
+                };
+                TimeUnit.SECONDS.sleep(PRICE_PROPERTIES.getWaitingTimeForCheckingAccountFunds());
             }
         } catch (Exception e) {
             logErrorWithException("Something bad happened, error message: {}", e);
