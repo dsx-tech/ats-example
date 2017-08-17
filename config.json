@@ -1,8 +1,8 @@
 {
   "DSXConfig": {
-    "url": "https://dsx.uk",
-    "secretKey": "6FY66EC0YJ7YL4OHAC1X5ZEYAUUFRJBFI21I9S7A5PW7",
-    "apiKey": "396f12b3-9998-4ff8-800b-f29ab6d8e886"
+    "url": "http://localhost/",
+    "secretKey": "gm_secret",
+    "apiKey": "gm_key"
   },
   "PriceConfig": {
     "pricePercentage": "1.001",
@@ -11,7 +11,7 @@
     "priceAddition": "0.01",
     "averagePriceUpdateTime": "3000",
     "timestampForPriceUpdate": "10",
-    "dsxAccountType": "DEMO",
+    "dsxAccountType": "LIVE",
     "stepToMove": "0.1",
     "volumeToMove": "0.05",
     "waitingTimeForOrderCheck": "5",

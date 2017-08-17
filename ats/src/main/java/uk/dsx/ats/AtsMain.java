@@ -61,7 +61,13 @@ public class AtsMain {
 
     public static BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
         MarketDataService marketDataService = exchange.getMarketDataService();
-        return marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids().get(0).getLimitPrice();
+        List<LimitOrder> bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
+        LimitOrder highestBid = null;
+        if (bids.isEmpty()) {
+            throw new IndexOutOfBoundsException("There is no orders in order book, cannot get dsx price");
+        }
+        highestBid = bids.get(0);
+        return highestBid.getLimitPrice();
     }
 
     public static Balance getFunds(Exchange exchange) throws IOException {

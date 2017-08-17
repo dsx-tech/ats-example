@@ -146,7 +146,7 @@ public class Algorithm {
                     getVolumeBeforeOrder(args.getDsxExchange(), dsxPriceWithAddition));
 
             if (result.getRate().subtract(dsxCurrentPrice).abs().compareTo(priceConstants.getStepToMove()) > 0
-                    && volumeBeforeOrder.compareTo(priceConstants.getVolumeToMove()) >= 0) {
+                    || volumeBeforeOrder.compareTo(priceConstants.getVolumeToMove()) >= 0) {
                 //if price is good and order needs to be replaced (with better price). check order status again
                 long orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
                         args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
