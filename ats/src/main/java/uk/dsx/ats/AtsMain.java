@@ -10,6 +10,7 @@ import org.knowm.xchange.currency.CurrencyPair;
 
 import org.knowm.xchange.dsx.service.DSXTradeService;
 import org.knowm.xchange.dto.account.Balance;
+import org.knowm.xchange.dto.marketdata.OrderBook;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.kraken.KrakenExchange;
 import org.knowm.xchange.service.account.AccountService;
@@ -20,6 +21,7 @@ import si.mazi.rescu.HttpStatusIOException;
 import uk.dsx.ats.data.AlgorithmArgs;
 import uk.dsx.ats.data.AveragePrice;
 import uk.dsx.ats.data.ExchangeData;
+import uk.dsx.ats.data.OrderBookWrapper;
 import uk.dsx.ats.utils.DSXUtils;
 
 import java.io.IOException;
@@ -39,6 +41,7 @@ import static uk.dsx.ats.utils.DSXUtils.*;
 
 public class AtsMain {
 
+
     public static final Logger logInfo = LogManager.getLogger("info-log");
     public static final Logger logAudit = LogManager.getLogger("audit-log");
 
@@ -46,9 +49,13 @@ public class AtsMain {
 
     public static final String RATE_LIMIT_CONFIG = "rateLimit.json";
 
+    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 3;
+
     public static final AveragePrice AVERAGE_PRICE = new AveragePrice();
+    public static final OrderBookWrapper ORDER_BOOK_WRAPPER = new OrderBookWrapper();
     public static ScheduledExecutorService EXECUTOR_SERVICE = null;
     public static ArrayList<ExchangeData> EXCHANGES = new ArrayList<>();
+
 
     public static BigDecimal getBidOrderHighestPrice(Exchange exchange) throws IOException {
         try {
@@ -62,12 +69,36 @@ public class AtsMain {
     public static BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
         MarketDataService marketDataService = exchange.getMarketDataService();
         List<LimitOrder> bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-        LimitOrder highestBid = null;
-        if (bids.isEmpty()) {
-            throw new IndexOutOfBoundsException("There is no orders in order book, cannot get dsx price");
+        LimitOrder highestBid;
+        while (bids.isEmpty()) {
+            bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
+            logInfo("DSX orderbook is empty, waiting for orderbook appearance");
+            sleep("Request to get orderbook interrupted");
         }
         highestBid = bids.get(0);
         return highestBid.getLimitPrice();
+    }
+
+    public static void checkLiquidity(Algorithm algorithm) {
+        Exchange exchange = algorithm.getArgs().getDsxExchange();
+        MarketDataService marketDataService = exchange.getMarketDataService();
+        String exchangeName = exchange.getExchangeSpecification().getExchangeName();
+
+        Runnable exchangeRun = () -> {
+            try {
+                ORDER_BOOK_WRAPPER.setOrderBook(marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()));
+
+                // if only our order is placed in order book, then cancel it
+                if (ORDER_BOOK_WRAPPER.getOrderBook().getAsks().isEmpty() && ORDER_BOOK_WRAPPER.getOrderBook().getBids().size() == 1) {
+                    algorithm.cancelAllOrders((DSXTradeService) exchange.getTradeService());
+                    logInfo("Cancelled all orders, because liquidity disappeared");
+                }
+            } catch (Exception e) {
+                logErrorWithException("Cannot get {} orderbook", e, exchangeName);
+            }
+        };
+        ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor();
+        service.scheduleAtFixedRate(exchangeRun, 0, REQUEST_TO_DSX_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
     public static Balance getFunds(Exchange exchange) throws IOException {
@@ -118,6 +149,15 @@ public class AtsMain {
         return volume;
     }
 
+    private static void sleep(String interruptedMessage) {
+        try {
+            TimeUnit.SECONDS.sleep(REQUEST_TO_DSX_TIMEOUT_SECONDS);
+        } catch (InterruptedException e) {
+            if (interruptedMessage != null)
+                logInfo.warn(interruptedMessage);
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         Exchange dsxExchange;
         TradeService tradeService;
@@ -148,11 +188,13 @@ public class AtsMain {
 
                 initExchanges(new ArrayList<>(Arrays.asList(KrakenExchange.class, BitfinexExchange.class, BitstampExchange.class)));
                 calculateAveragePriceAsync();
+                checkLiquidity(algorithm);
 
                 boolean isAlgorithmEnded = false;
                 while (!isAlgorithmEnded) {
                     isAlgorithmEnded = algorithm.executeAlgorithm();
-                };
+                }
+                ;
                 TimeUnit.SECONDS.sleep(PRICE_PROPERTIES.getWaitingTimeForCheckingAccountFunds());
             }
         } catch (Exception e) {

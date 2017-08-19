@@ -200,6 +200,10 @@ public class Algorithm {
                     //if DSX price is bad - waiting
                     TimeUnit.MILLISECONDS.sleep(priceConstants.getAveragePriceUpdateTime());
                 }
+            } else {
+                // if we cannot get price from any exchange than cancel order, bcs average price can become better
+                unlimitedRepeatableRequest("cancelAllOrders", () ->
+                        args.getDsxTradeServiceRaw().cancelAllDSXOrders());
             }
         }
     }
