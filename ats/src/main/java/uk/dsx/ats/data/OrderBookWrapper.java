@@ -6,6 +6,8 @@ import org.knowm.xchange.dto.marketdata.OrderBook;
 
 /**
  * @author Mikhail Wall
+ *
+ * That class is for liquidity checking
  */
 
 public class OrderBookWrapper {
