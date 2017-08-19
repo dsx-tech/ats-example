@@ -10,7 +10,6 @@ import org.knowm.xchange.currency.CurrencyPair;
 
 import org.knowm.xchange.dsx.service.DSXTradeService;
 import org.knowm.xchange.dto.account.Balance;
-import org.knowm.xchange.dto.marketdata.OrderBook;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.kraken.KrakenExchange;
 import org.knowm.xchange.service.account.AccountService;
