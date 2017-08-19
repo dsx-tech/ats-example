@@ -194,7 +194,6 @@ public class AtsMain {
                 while (!isAlgorithmEnded) {
                     isAlgorithmEnded = algorithm.executeAlgorithm();
                 }
-                ;
                 TimeUnit.SECONDS.sleep(PRICE_PROPERTIES.getWaitingTimeForCheckingAccountFunds());
             }
         } catch (Exception e) {
