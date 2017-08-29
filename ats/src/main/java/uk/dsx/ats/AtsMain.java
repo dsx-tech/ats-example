@@ -48,12 +48,12 @@ public class AtsMain {
 
     public static final String RATE_LIMIT_CONFIG = "rateLimit.json";
 
-    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 3;
+    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
 
     public static final AveragePrice AVERAGE_PRICE = new AveragePrice();
     public static final OrderBookWrapper ORDER_BOOK_WRAPPER = new OrderBookWrapper();
     public static ScheduledExecutorService EXECUTOR_SERVICE = null;
-    public static ArrayList<ExchangeData> EXCHANGES = new ArrayList<>();
+    public static final ArrayList<ExchangeData> EXCHANGES = new ArrayList<>();
 
 
     public static BigDecimal getBidOrderHighestPrice(Exchange exchange) throws IOException {

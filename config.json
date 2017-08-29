@@ -1,8 +1,8 @@
 {
   "DSXConfig": {
     "url": "http://localhost/",
-    "secretKey": "gm_secret",
-    "apiKey": "gm_key"
+    "secretKey": "361O727XCL1OTJBQLAQKUZJMG01WBQ6OZZB42ERCUJ0U",
+    "apiKey": "daca2989-d874-47a3-8628-8e977e37fbaf"
   },
   "PriceConfig": {
     "pricePercentage": "1.001",
@@ -11,7 +11,7 @@
     "priceAddition": "0.01",
     "averagePriceUpdateTime": "3000",
     "timestampForPriceUpdate": "10",
-    "dsxAccountType": "LIVE",
+    "dsxAccountType": "DEMO",
     "stepToMove": "0.1",
     "volumeToMove": "0.05",
     "waitingTimeForOrderCheck": "5",

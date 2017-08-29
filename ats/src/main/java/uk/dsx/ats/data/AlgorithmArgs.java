@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 
 @Data
 public class AlgorithmArgs {
-    PriceProperties priceConstants;
+    PriceProperties priceProperties;
     BigDecimal dsxPrice;
     BigDecimal averagePrice;
     String limitOrderReturnValue;
@@ -22,9 +22,9 @@ public class AlgorithmArgs {
     TradeService tradeService;
     DSXTradeServiceRaw dsxTradeServiceRaw;
 
-    public AlgorithmArgs(PriceProperties priceConstants, Exchange dsxExchange, TradeService tradeService,
+    public AlgorithmArgs(PriceProperties priceProperties, Exchange dsxExchange, TradeService tradeService,
                          DSXTradeServiceRaw dsxTradeServiceRaw) {
-        this.priceConstants = priceConstants;
+        this.priceProperties = priceProperties;
         this.dsxExchange = dsxExchange;
         this.tradeService = tradeService;
         this.dsxTradeServiceRaw = dsxTradeServiceRaw;

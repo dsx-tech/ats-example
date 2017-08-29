@@ -27,7 +27,7 @@ import static uk.dsx.ats.utils.DSXUtils.logErrorWithException;
 @Value
 public class Algorithm {
 
-    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 1;
+    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
     private static final BigDecimal LOW_VOLUME = new BigDecimal("0.1");
 
     AlgorithmArgs args;
@@ -76,7 +76,7 @@ public class Algorithm {
     }
 
     public boolean executeAlgorithm() throws Exception {
-        PriceProperties priceConstants = args.getPriceConstants();
+        PriceProperties priceConstants = args.getPriceProperties();
 
         //waiting for our price to be better than average price on supported exchanges
         awaitGoodPrice();
@@ -169,12 +169,12 @@ public class Algorithm {
 
 
     private void awaitGoodPrice() throws Exception {
-        PriceProperties priceConstants = args.getPriceConstants();
+        PriceProperties priceProperties = args.getPriceProperties();
 
-        while (args.getAveragePrice() == null || !isDSXPriceGood()) {
-            //get new average price from other exchanges
-            args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceConstants.getTimestampForPriceUpdate(),
-                    priceConstants.getPriceScale()));
+        while (args.getAveragePrice() == null || !isDSXPriceGood(priceProperties)) {
+//            //get new average price from other exchanges
+            args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
+                    priceProperties.getPriceScale()));
 
             //get DSX price
             args.setDsxPrice(unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
@@ -183,7 +183,7 @@ public class Algorithm {
             if (args.getAveragePrice() != null) {
                 logInfo("Average price: {}, dsxPrice: {}", args.getAveragePrice(), args.getDsxPrice());
                 //if DSX price is bad
-                if (!isDSXPriceGood()) {
+                if (!isDSXPriceGood(priceProperties)) {
                     //if we have previously placed order - we should kill it or it can be filled by bad price.
                     if (args.getOrderId() != 0L) {
                         try {
@@ -198,17 +198,24 @@ public class Algorithm {
                     }
                     logInfo("Cannot execute order. Waiting for price changing...");
                     //if DSX price is bad - waiting
-                    TimeUnit.MILLISECONDS.sleep(priceConstants.getAveragePriceUpdateTime());
+                    TimeUnit.MILLISECONDS.sleep(priceProperties.getAveragePriceUpdateTime());
                 }
             } else {
                 // if we cannot get price from any exchange than cancel order, bcs average price can become better
                 unlimitedRepeatableRequest("cancelAllOrders", () ->
                         args.getDsxTradeServiceRaw().cancelAllDSXOrders());
+                args.setLimitOrderReturnValue(null);
+                logInfo("Waiting for connection to exchanges");
+                sleep("Sleep was interrupted");
             }
         }
     }
 
-    private boolean isDSXPriceGood() {
-        return args.getAveragePrice().compareTo(args.getDsxPrice().multiply(args.getPriceConstants().getPricePercentage())) >= 0;
+    private boolean isDSXPriceGood(PriceProperties priceProperties) {
+
+        args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
+                priceProperties.getPriceScale()));
+        BigDecimal averagePrice = args.getAveragePrice();
+        return averagePrice != null && averagePrice.compareTo(args.getDsxPrice().multiply(priceProperties.getPricePercentage())) >= 0;
     }
 }
