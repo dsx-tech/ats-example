@@ -72,6 +72,12 @@ public class Algorithm {
     }
 
     public void cancelAllOrders(DSXTradeService tradeService) throws Exception {
+
+        // set limit order return value for placing new order
+        args.setLimitOrderReturnValue(null);
+
+        // setting average price to null for updating dsx price, when cancelling order
+        args.setAveragePrice(null);
         unlimitedRepeatableRequest("cancelAllOrders", tradeService::cancelAllOrders);
     }
 
@@ -204,7 +210,6 @@ public class Algorithm {
                 // if we cannot get price from any exchange than cancel order, bcs average price can become better
                 unlimitedRepeatableRequest("cancelAllOrders", () ->
                         args.getDsxTradeServiceRaw().cancelAllDSXOrders());
-                args.setLimitOrderReturnValue(null);
                 logInfo("Waiting for connection to exchanges");
                 sleep("Sleep was interrupted");
             }
