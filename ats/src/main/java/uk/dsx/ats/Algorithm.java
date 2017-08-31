@@ -75,11 +75,12 @@ public class Algorithm {
 
         // set limit order return value for placing new order
         args.setLimitOrderReturnValue(null);
-
+        args.setOrderId(0L);
         // setting average price to null for updating dsx price, when cancelling order
         args.setAveragePrice(null);
-        args.setOrderId(0L);
+
         unlimitedRepeatableRequest("cancelAllOrders", tradeService::cancelAllOrders);
+        logInfo("Cancelled order");
     }
 
     public boolean executeAlgorithm() throws Exception {
