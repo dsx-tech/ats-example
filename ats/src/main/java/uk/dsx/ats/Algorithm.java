@@ -78,6 +78,7 @@ public class Algorithm {
 
         // setting average price to null for updating dsx price, when cancelling order
         args.setAveragePrice(null);
+        args.setOrderId(0L);
         unlimitedRepeatableRequest("cancelAllOrders", tradeService::cancelAllOrders);
     }
 
