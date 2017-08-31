@@ -80,7 +80,7 @@ public class Algorithm {
         args.setAveragePrice(null);
 
         unlimitedRepeatableRequest("cancelAllOrders", tradeService::cancelAllOrders);
-        logInfo("Cancelled order");
+        logInfo("Cancelled all orders order");
     }
 
     public boolean executeAlgorithm() throws Exception {
@@ -99,6 +99,9 @@ public class Algorithm {
         // condition for not printing volume, when this is redundant
         if (volume.compareTo(LOW_VOLUME) == 1) {
             logInfo("Buying volume: {}", volume);
+            unlimitedRepeatableRequest("cancelAllOrders", () ->
+                    args.getDsxTradeServiceRaw().cancelAllDSXOrders());
+            logInfo("Cancelled all previous orders in case there was placed order");
         }
         try {
             //check if we have enough money to place order
@@ -180,7 +183,7 @@ public class Algorithm {
         PriceProperties priceProperties = args.getPriceProperties();
 
         while (args.getAveragePrice() == null || !isDSXPriceGood(priceProperties)) {
-//            //get new average price from other exchanges
+            //get new average price from other exchanges
             args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
                     priceProperties.getPriceScale()));
 
@@ -223,6 +226,8 @@ public class Algorithm {
         args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
                 priceProperties.getPriceScale()));
         BigDecimal averagePrice = args.getAveragePrice();
-        return averagePrice != null && averagePrice.compareTo(args.getDsxPrice().multiply(priceProperties.getPricePercentage())) >= 0;
+        BigDecimal dsxPrice = args.getDsxPrice();
+        logInfo("Average price: {}, dsxPrice: {}", averagePrice, dsxPrice);
+        return averagePrice != null && averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage())) >= 0;
     }
 }
