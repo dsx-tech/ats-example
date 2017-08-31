@@ -75,12 +75,18 @@ public class Algorithm {
 
         // set limit order return value for placing new order
         args.setLimitOrderReturnValue(null);
-        args.setOrderId(0L);
         // setting average price to null for updating dsx price, when cancelling order
         args.setAveragePrice(null);
 
         unlimitedRepeatableRequest("cancelAllOrders", tradeService::cancelAllOrders);
-        logInfo("Cancelled all orders order");
+        logInfo("Cancelled all active account orders");
+    }
+
+    private void printOrderStatus(long orderStatus) {
+        if (orderStatus == 0L) logInfo("Actual order status: Active");
+        else if (orderStatus == 1L) logInfo("Actual order status: Filled");
+        else if (orderStatus == 2L) logInfo("Actual order status: Killed");
+        else logInfo("Actual order status: {}", orderStatus);
     }
 
     public boolean executeAlgorithm() throws Exception {
@@ -98,11 +104,13 @@ public class Algorithm {
 
         // condition for not printing volume, when this is redundant
         if (volume.compareTo(LOW_VOLUME) == 1) {
-            logInfo("Buying volume: {}", volume);
+
             unlimitedRepeatableRequest("cancelAllOrders", () ->
                     args.getDsxTradeServiceRaw().cancelAllDSXOrders());
             logInfo("Cancelled all previous orders in case there was placed order");
+            logInfo("Buying volume: {}", volume);
         }
+
         try {
             //check if we have enough money to place order
             if (volume.compareTo(LOW_VOLUME) == -1) {
@@ -140,8 +148,7 @@ public class Algorithm {
             //get actual order status
             DSXOrderStatusResult result = unlimitedRepeatableRequest("getOrderStatus", () ->
                     args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
-            logInfo("Actual order status: {}", result.getStatus());
-
+            printOrderStatus(result.getStatus());
             //get current DSX price
             BigDecimal dsxCurrentPrice = unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
                     getBidOrderHighestPriceDSX(args.getDsxExchange()));
@@ -161,7 +168,8 @@ public class Algorithm {
                 //if price is good and order needs to be replaced (with better price). check order status again
                 long orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
                         args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
-                logInfo("Actual order status: {}", orderStatus);
+
+                printOrderStatus(orderStatus);
                 // if order status is not filled or killed, then cancel order so we can place another order
                 if (orderStatus != 1 && orderStatus != 2) {
                     unlimitedRepeatableRequest("cancelOrder", () ->
