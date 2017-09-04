@@ -139,7 +139,7 @@ public class AtsMain {
         MarketDataService marketDataService = exchange.getMarketDataService();
         BigDecimal volume = BigDecimal.ZERO;
 
-        List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR).getBids();
+        List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
         for (LimitOrder order : orders) {
             if (order.getLimitPrice().compareTo(price) > 0) {
                 volume = volume.add(order.getTradableAmount());

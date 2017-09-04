@@ -165,7 +165,7 @@ public class Algorithm {
 
             // if order status not filled - check that order is actual (top bid or so and price is good).
             BigDecimal volumeBeforeOrder = unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
-                    getVolumeBeforeOrder(args.getDsxExchange(), dsxPriceWithAddition));
+                    getVolumeBeforeOrder(args.getDsxExchange(), result.getRate()));
 
             if (result.getRate().subtract(dsxCurrentPrice).abs().compareTo(priceConstants.getStepToMove()) > 0
                     || volumeBeforeOrder.compareTo(priceConstants.getVolumeToMove()) >= 0) {
