@@ -1,9 +1,7 @@
 package uk.dsx.ats.data;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import lombok.Setter;
-import lombok.Value;
-import lombok.experimental.NonFinal;
+import lombok.Data;
 
 import java.math.BigDecimal;
 
@@ -11,7 +9,7 @@ import java.math.BigDecimal;
  * @author Mikhail Wall on 6/27/17.
  */
 
-@Value
+@Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PriceProperties {
 
@@ -31,13 +29,8 @@ public class PriceProperties {
     int priceScale = DEFAULT_PRICE_SCALE;
     int volumeScale = DEFAULT_VOLUME_SCALE;
     BigDecimal priceAddition = DEFAULT_PRICE_ADDITION;
-
-    @NonFinal
-    @Setter
     long averagePriceUpdateTime = DEFAULT_AVERAGE_PRICE_UPDATE_TIME;
     long timestampForPriceUpdate = DEFAULT_TIMESTAMP_FOR_PRICE_UPDATE;
-    @NonFinal
-    @Setter
     String dsxAccountType = DEFAULT_ACCOUNT_TYPE;
     BigDecimal stepToMove = DEFAULT_STEP_TO_MOVE;
     BigDecimal volumeToMove = DEFAULT_VOLUME_TO_MOVE;
