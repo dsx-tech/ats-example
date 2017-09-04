@@ -74,6 +74,7 @@ public class Algorithm {
     public void cancelAllOrders(DSXTradeService tradeService) throws Exception {
 
         // set limit order return value for placing new order
+        args.setOrderId(0L);
         args.setLimitOrderReturnValue(null);
         // setting average price to null for updating dsx price, when cancelling order
         args.setAveragePrice(null);
@@ -105,8 +106,10 @@ public class Algorithm {
         // condition for not printing volume, when this is redundant
         if (volume.compareTo(LOW_VOLUME) == 1) {
 
-            unlimitedRepeatableRequest("cancelAllOrders", () ->
-                    args.getDsxTradeServiceRaw().cancelAllDSXOrders());
+            cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
+            volume = unlimitedRepeatableRequest("getFunds", () ->
+                    getFunds(args.getDsxExchange()).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
+                            RoundingMode.DOWN));
             logInfo("Cancelled all previous orders in case there was placed order");
             logInfo("Buying volume: {}", volume);
         }
@@ -133,8 +136,9 @@ public class Algorithm {
             }
             if (args.getLimitOrderReturnValue() == null) {
                 //place new order
+                BigDecimal finalVolume = volume;
                 String limitOrderReturnValue = unlimitedRepeatableRequest("placeLimitOrder", () ->
-                        args.getTradeService().placeLimitOrder(new LimitOrder(Order.OrderType.BID, volume, CURRENCY_PAIR,
+                        args.getTradeService().placeLimitOrder(new LimitOrder(Order.OrderType.BID, finalVolume, CURRENCY_PAIR,
                                 "", date, dsxPriceWithAddition)));
                 logInfo("Order with id {} was placed", limitOrderReturnValue);
                 args.setLimitOrderReturnValue(limitOrderReturnValue);
@@ -206,8 +210,7 @@ public class Algorithm {
                     //if we have previously placed order - we should kill it or it can be filled by bad price.
                     if (args.getOrderId() != 0L) {
                         try {
-                            unlimitedRepeatableRequest("cancelOrder", () ->
-                                    args.getTradeService().cancelOrder(args.getLimitOrderReturnValue()));
+                            cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
                             logInfo("Previous order was cancelled, because it had bad price");
                         } catch (ExchangeException e) {
                             logError("Order was already filled or killed.");
@@ -221,8 +224,7 @@ public class Algorithm {
                 }
             } else {
                 // if we cannot get price from any exchange than cancel order, bcs average price can become better
-                unlimitedRepeatableRequest("cancelAllOrders", () ->
-                        args.getDsxTradeServiceRaw().cancelAllDSXOrders());
+                cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
                 logInfo("Waiting for connection to exchanges");
                 sleep("Sleep was interrupted");
             }
