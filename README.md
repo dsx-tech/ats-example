@@ -1,8 +1,8 @@
 # Automated Trading System example
 
-DSX ATS example is using XChange library for interaction with cryptocurrency exchanges. It takes BTC price from Bitfinex, 
-Bitstamp, Kraken, and compare it with DSX price. If it satisfies pre-defined conditions, then ATS places an order to buy BTC0 
-on DSX. ATS moves active orders on prices movements to garantee the best price.
+DSX ATS example is using XChange library for communication with cryptocurrency exchanges. It takes BTC price from Bitfinex, 
+Bitstamp, Kraken, and compare it with DSX price. If it satisfies pre-defined conditions, then ATS places an order to buy BTC 
+on DSX. ATS moves active orders on price movements to garantee the best execution.
 
 #### How to use ATS
 #### Ubuntu
