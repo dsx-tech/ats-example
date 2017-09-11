@@ -12,6 +12,7 @@ import uk.dsx.ats.data.PriceProperties;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.ConnectException;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
@@ -60,6 +61,9 @@ public class Algorithm {
         while (!Thread.interrupted()) {
             try {
                 return requestObject.get();
+            } catch (ConnectException e) {
+                logErrorWithException("Connection to dsx.uk disappeared, waiting 1 sec to try again", e);
+                sleep(String.format("%s interrupted", methodName));
             } catch (Exception e) {
                 if (e.getMessage().contains("418")) {
                     logErrorWithException("Cannot connect to dsx.uk, waiting 1 sec to try again", e);
@@ -237,7 +241,6 @@ public class Algorithm {
                 priceProperties.getPriceScale()));
         BigDecimal averagePrice = args.getAveragePrice();
         BigDecimal dsxPrice = args.getDsxPrice();
-        logInfo("Average price: {}, dsxPrice: {}", averagePrice, dsxPrice);
         return averagePrice != null && averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage())) >= 0;
     }
 }
