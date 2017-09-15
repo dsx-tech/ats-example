@@ -13,6 +13,8 @@ import uk.dsx.ats.data.PriceProperties;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
@@ -61,8 +63,8 @@ public class Algorithm {
         while (!Thread.interrupted()) {
             try {
                 return requestObject.get();
-            } catch (ConnectException e) {
-                logErrorWithException("Connection to dsx.uk disappeared, waiting 1 sec to try again", e);
+            } catch (ConnectException | UnknownHostException | SocketTimeoutException e) {
+                logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
                 sleep(String.format("%s interrupted", methodName));
             } catch (Exception e) {
                 if (e.getMessage().contains("418")) {
