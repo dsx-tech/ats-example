@@ -26,11 +26,9 @@ import uk.dsx.ats.utils.DSXUtils;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.IntStream;
 
 import static uk.dsx.ats.utils.DSXUtils.*;
 
@@ -146,6 +144,23 @@ public class AtsMain {
             }
         }
         return volume;
+    }
+
+    public static BigDecimal getPriceAfterOrder(Exchange exchange, BigDecimal price) throws IOException {
+        MarketDataService marketDataService = exchange.getMarketDataService();
+        List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
+        BigDecimal priceAfterUserOrder = null;
+
+        // index in order book bids for user's order
+        int indexOrder = IntStream.range(0, orders.size())
+                .filter(i -> orders.get(i).getLimitPrice().compareTo(price) == 0)
+                .findFirst().orElse(-1);
+
+        // take order price after user's order
+        if (orders.size() > indexOrder)
+            priceAfterUserOrder = orders.get(indexOrder + 1).getLimitPrice();
+
+        return priceAfterUserOrder;
     }
 
     private static void sleep(String interruptedMessage) {

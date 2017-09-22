@@ -1,11 +1,11 @@
 {
   "DSXConfig": {
     "url": "http://localhost/",
-    "secretKey": "361O727XCL1OTJBQLAQKUZJMG01WBQ6OZZB42ERCUJ0U",
-    "apiKey": "daca2989-d874-47a3-8628-8e977e37fbaf"
+    "secretKey": "A7NZN1XZT2LKC3AKFBBQPKUSRIB2ZVB2F69BGESIQW04",
+    "apiKey": "19362651-64f6-4995-88fa-230a859a8f55"
   },
   "PriceConfig": {
-    "pricePercentage": "1.001",
+    "pricePercentage": "1.01",
     "priceScale": 5,
     "volumeScale": 4,
     "priceAddition": "0.01",
@@ -15,6 +15,7 @@
     "stepToMove": "0.1",
     "volumeToMove": "0.05",
     "waitingTimeForOrderCheck": "5",
-    "waitingTimeForCheckingAccountFunds": 300
+    "waitingTimeForCheckingAccountFunds": 10,
+    "sensitivity": 5
   }
 }

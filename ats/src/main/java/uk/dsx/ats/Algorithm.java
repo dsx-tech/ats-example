@@ -173,8 +173,13 @@ public class Algorithm {
             BigDecimal volumeBeforeOrder = unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
                     getVolumeBeforeOrder(args.getDsxExchange(), result.getRate()));
 
+            BigDecimal priceAfterOrder = unlimitedRepeatableRequest("getPriceAfterOrder", () ->
+                    getPriceAfterOrder(args.getDsxExchange(), result.getRate()));
+
             if (result.getRate().subtract(dsxCurrentPrice).abs().compareTo(priceConstants.getStepToMove()) > 0
-                    || volumeBeforeOrder.compareTo(priceConstants.getVolumeToMove()) >= 0) {
+                    || volumeBeforeOrder.compareTo(priceConstants.getVolumeToMove()) >= 0
+                    || (priceAfterOrder != null && result.getRate().subtract(priceAfterOrder)
+                    .compareTo(priceConstants.getSensitivity()) >= 0)) {
                 //if price is good and order needs to be replaced (with better price). check order status again
                 long orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
                         args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());

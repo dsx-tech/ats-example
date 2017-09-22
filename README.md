@@ -53,6 +53,9 @@ ats folder are used for AtsAlgoTest class, i.e. for testing purposes.
         "waitingTimeForOrderCheck": time for checking order status after it was placed. (in seconds)
         
         "waitingTimeForCheckingAccountFunds": time for checking if account have enough funds for placing order in seconds.
+        
+        "sensitivity": if difference betwenn price for order after user's order and user's order is bigger than that amount
+         then replace order with updated price, e.g. - 5 (5 usd)
     
 #### Clarification of rateLimit.json
         
