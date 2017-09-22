@@ -157,7 +157,7 @@ public class AtsMain {
                 .findFirst().orElse(-1);
 
         // take order price after user's order
-        if (orders.size() > indexOrder)
+        if (orders.size() - 1 > indexOrder)
             priceAfterUserOrder = orders.get(indexOrder + 1).getLimitPrice();
 
         return priceAfterUserOrder;
@@ -196,9 +196,6 @@ public class AtsMain {
             while (true) {
                 algorithm.cancelAllOrders(dsxTradeService);
                 logInfo("Cancelled all active orders");
-
-                Balance balance = getFunds(dsxExchange);
-                logInfo("Account funds: {}", balance);
 
                 initExchanges(new ArrayList<>(Arrays.asList(KrakenExchange.class, BitfinexExchange.class, BitstampExchange.class)));
                 calculateAveragePriceAsync();

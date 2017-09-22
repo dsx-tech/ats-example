@@ -5,6 +5,7 @@ import org.apache.logging.log4j.Logger;
 import org.knowm.xchange.dsx.dto.trade.DSXOrderStatusResult;
 import org.knowm.xchange.dsx.service.DSXTradeService;
 import org.knowm.xchange.dto.Order;
+import org.knowm.xchange.dto.account.Balance;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.exceptions.ExchangeException;
 import uk.dsx.ats.data.AlgorithmArgs;
@@ -99,6 +100,10 @@ public class Algorithm {
     public boolean executeAlgorithm() throws Exception {
         PriceProperties priceConstants = args.getPriceProperties();
 
+        Balance balance = unlimitedRepeatableRequest("getFunds", () ->
+                getFunds(args.getDsxExchange()));
+
+        logInfo("Account funds: {}", balance);
         //waiting for our price to be better than average price on supported exchanges
         awaitGoodPrice();
 
@@ -156,44 +161,47 @@ public class Algorithm {
             TimeUnit.SECONDS.sleep(priceConstants.getWaitingTimeForOrderCheck());
 
             //get actual order status
-            DSXOrderStatusResult result = unlimitedRepeatableRequest("getOrderStatus", () ->
-                    args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
-            printOrderStatus(result.getStatus());
-            //get current DSX price
-            BigDecimal dsxCurrentPrice = unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
-                    getBidOrderHighestPriceDSX(args.getDsxExchange()));
+            if (args.getOrderId() != 0L) {
+                DSXOrderStatusResult result = unlimitedRepeatableRequest("getOrderStatus", () ->
+                        args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
+                printOrderStatus(result.getStatus());
 
-            // Order status == Filled - algorithm executed correctly
-            if (result.getStatus() == 1) {
-                logInfo("Order was filled");
-                return true;
-            }
+                //get current DSX price
+                BigDecimal dsxCurrentPrice = unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
+                        getBidOrderHighestPriceDSX(args.getDsxExchange()));
 
-            // if order status not filled - check that order is actual (top bid or so and price is good).
-            BigDecimal volumeBeforeOrder = unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
-                    getVolumeBeforeOrder(args.getDsxExchange(), result.getRate()));
-
-            BigDecimal priceAfterOrder = unlimitedRepeatableRequest("getPriceAfterOrder", () ->
-                    getPriceAfterOrder(args.getDsxExchange(), result.getRate()));
-
-            if (result.getRate().subtract(dsxCurrentPrice).abs().compareTo(priceConstants.getStepToMove()) > 0
-                    || volumeBeforeOrder.compareTo(priceConstants.getVolumeToMove()) >= 0
-                    || (priceAfterOrder != null && result.getRate().subtract(priceAfterOrder)
-                    .compareTo(priceConstants.getSensitivity()) >= 0)) {
-                //if price is good and order needs to be replaced (with better price). check order status again
-                long orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
-                        args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
-
-                printOrderStatus(orderStatus);
-                // if order status is not filled or killed, then cancel order so we can place another order
-                if (orderStatus != 1 && orderStatus != 2) {
-                    unlimitedRepeatableRequest("cancelOrder", () ->
-                            args.getTradeService().cancelOrder(args.getLimitOrderReturnValue()));
-                    logInfo("Cancelling order, because better price exists");
-                    args.setOrderId(0L);
-                    args.setAveragePrice(null);
+                // Order status == Filled - algorithm executed correctly
+                if (result.getStatus() == 1) {
+                    logInfo("Order was filled");
+                    return true;
                 }
-                args.setLimitOrderReturnValue(null);
+
+                // if order status not filled - check that order is actual (top bid or so and price is good).
+                BigDecimal volumeBeforeOrder = unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
+                        getVolumeBeforeOrder(args.getDsxExchange(), result.getRate()));
+
+                BigDecimal priceAfterOrder = unlimitedRepeatableRequest("getPriceAfterOrder", () ->
+                        getPriceAfterOrder(args.getDsxExchange(), result.getRate()));
+
+                if (result.getRate().subtract(dsxCurrentPrice).abs().compareTo(priceConstants.getStepToMove()) > 0
+                        || volumeBeforeOrder.compareTo(priceConstants.getVolumeToMove()) >= 0
+                        || (priceAfterOrder != null && result.getRate().subtract(priceAfterOrder)
+                        .compareTo(priceConstants.getSensitivity()) >= 0)) {
+                    //if price is good and order needs to be replaced (with better price). check order status again
+                    long orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
+                            args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
+
+                    printOrderStatus(orderStatus);
+                    // if order status is not filled or killed, then cancel order so we can place another order
+                    if (orderStatus != 1 && orderStatus != 2) {
+                        unlimitedRepeatableRequest("cancelOrder", () ->
+                                args.getTradeService().cancelOrder(args.getLimitOrderReturnValue()));
+                        logInfo("Cancelling order, because better price exists");
+                        args.setOrderId(0L);
+                        args.setAveragePrice(null);
+                    }
+                    args.setLimitOrderReturnValue(null);
+                }
             }
         } catch (ExchangeException e) {
             logErrorWithException("Exchange exception: {}", e);
