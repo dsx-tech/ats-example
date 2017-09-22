@@ -93,7 +93,7 @@ public class AtsMain {
                     logInfo("Cancelled all orders, because liquidity disappeared");
                 }
             } catch (Exception e) {
-                logError("Cannot get {} orderbook", e.getMessage(), exchangeName);
+                logError("Cannot get {} orderbook", exchangeName, e.getMessage());
             }
         };
         ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor();
