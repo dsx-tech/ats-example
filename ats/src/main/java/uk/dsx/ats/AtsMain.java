@@ -38,7 +38,6 @@ import static uk.dsx.ats.utils.DSXUtils.*;
 
 public class AtsMain {
 
-
     public static final Logger logInfo = LogManager.getLogger("info-log");
     public static final Logger logAudit = LogManager.getLogger("audit-log");
 
@@ -52,7 +51,6 @@ public class AtsMain {
     public static final OrderBookWrapper ORDER_BOOK_WRAPPER = new OrderBookWrapper();
     public static ScheduledExecutorService EXECUTOR_SERVICE = null;
     public static final ArrayList<ExchangeData> EXCHANGES = new ArrayList<>();
-
 
     public static BigDecimal getBidOrderHighestPrice(Exchange exchange) throws IOException {
         try {
@@ -193,13 +191,13 @@ public class AtsMain {
         try {
             logInfo("ATS started");
 
+            initExchanges(new ArrayList<>(Arrays.asList(KrakenExchange.class, BitfinexExchange.class, BitstampExchange.class)));
+            calculateAveragePriceAsync();
+            checkLiquidity(algorithm);
+
             while (true) {
                 algorithm.cancelAllOrders(dsxTradeService);
                 logInfo("Cancelled all active orders");
-
-                initExchanges(new ArrayList<>(Arrays.asList(KrakenExchange.class, BitfinexExchange.class, BitstampExchange.class)));
-                calculateAveragePriceAsync();
-                checkLiquidity(algorithm);
 
                 boolean isAlgorithmEnded = false;
                 while (!isAlgorithmEnded) {
