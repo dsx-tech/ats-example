@@ -84,7 +84,7 @@ public class AtsMain {
                 ORDER_BOOK_WRAPPER.setOrderBook(marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()));
 
                 // if only our order is placed in order book, then cancel it
-                if (ORDER_BOOK_WRAPPER.getOrderBook().getAsks().isEmpty() && ORDER_BOOK_WRAPPER.getOrderBook().getBids().size() == 1) {
+                if (ORDER_BOOK_WRAPPER.getOrderBook().getBids().size() == 1) {
                     algorithm.cancelAllOrders((DSXTradeService) exchange.getTradeService());
                     logInfo("Cancelled all orders, because liquidity disappeared");
                 }
