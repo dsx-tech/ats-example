@@ -50,6 +50,7 @@ public class AtsMain {
     public static final AveragePrice AVERAGE_PRICE = new AveragePrice();
     public static final OrderBookWrapper ORDER_BOOK_WRAPPER = new OrderBookWrapper();
     public static ScheduledExecutorService EXECUTOR_SERVICE = null;
+    public static ScheduledExecutorService DSX_EXECUTOR_SERVICE = null;
     public static final ArrayList<ExchangeData> EXCHANGES = new ArrayList<>();
 
     public static BigDecimal getBidOrderHighestPrice(Exchange exchange) throws IOException {
@@ -88,12 +89,12 @@ public class AtsMain {
                     algorithm.cancelAllOrders((DSXTradeService) exchange.getTradeService());
                     logInfo("Cancelled all orders, because liquidity disappeared");
                 }
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 logError("Cannot get {} orderbook", exchangeName, e.getMessage());
             }
         };
-        ScheduledExecutorService service = Executors.newSingleThreadScheduledExecutor();
-        service.scheduleAtFixedRate(exchangeRun, 0, REQUEST_TO_DSX_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        DSX_EXECUTOR_SERVICE = Executors.newSingleThreadScheduledExecutor();
+        DSX_EXECUTOR_SERVICE.scheduleWithFixedDelay(exchangeRun, 0, REQUEST_TO_DSX_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
     public static Balance getFunds(Exchange exchange) throws IOException {
@@ -105,7 +106,7 @@ public class AtsMain {
         for (Class c : classes) {
             try {
                 EXCHANGES.add(new ExchangeData(ExchangeFactory.INSTANCE.createExchange(c.getName())));
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 logError("Cannot init {} exchange, error: {}", e.getMessage(), c.getName());
             }
         }
@@ -122,11 +123,11 @@ public class AtsMain {
                 try {
                     exchange.setPrice(getBidOrderHighestPrice(exchange.getExchange()));
                     exchange.setTimestamp(Instant.now().getEpochSecond());
-                } catch (IOException e) {
+                } catch (Throwable e) {
                     logError("Cannot get {} price: {}", exchangeName, e.getMessage());
                 }
             };
-            EXECUTOR_SERVICE.scheduleAtFixedRate(exchangeRun, 0,
+            EXECUTOR_SERVICE.scheduleWithFixedDelay(exchangeRun, 0,
                     DSXUtils.getRateLimitFromProperties(RATE_LIMIT_CONFIG, exchangeName), TimeUnit.SECONDS);
         }
     }
@@ -210,6 +211,7 @@ public class AtsMain {
         } finally {
             algorithm.cancelAllOrders(dsxTradeService);
             EXECUTOR_SERVICE.shutdown();
+            DSX_EXECUTOR_SERVICE.shutdown();
             logInfo("ATS finished");
         }
     }

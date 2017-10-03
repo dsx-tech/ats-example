@@ -8,6 +8,7 @@ import org.knowm.xchange.dto.Order;
 import org.knowm.xchange.dto.account.Balance;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.exceptions.ExchangeException;
+import si.mazi.rescu.HttpStatusIOException;
 import uk.dsx.ats.data.AlgorithmArgs;
 import uk.dsx.ats.data.PriceProperties;
 
@@ -64,7 +65,7 @@ public class Algorithm {
         while (!Thread.interrupted()) {
             try {
                 return requestObject.get();
-            } catch (ConnectException | UnknownHostException | SocketTimeoutException e) {
+            } catch (ConnectException | UnknownHostException | SocketTimeoutException | HttpStatusIOException e) {
                 logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
                 sleep(String.format("%s interrupted", methodName));
             } catch (Exception e) {
