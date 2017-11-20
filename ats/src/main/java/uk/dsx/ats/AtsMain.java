@@ -62,19 +62,6 @@ public class AtsMain {
         }
     }
 
-    public static BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
-        MarketDataService marketDataService = exchange.getMarketDataService();
-        List<LimitOrder> bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-        LimitOrder highestBid;
-        while (bids.isEmpty()) {
-            bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-            logInfo("DSX orderbook is empty, waiting for orderbook appearance");
-            sleep("Request to get orderbook interrupted");
-        }
-        highestBid = bids.get(0);
-        return highestBid.getLimitPrice();
-    }
-
     public static void checkLiquidity(Algorithm algorithm) {
         Exchange exchange = algorithm.getArgs().getDsxExchange();
         MarketDataService marketDataService = exchange.getMarketDataService();
@@ -130,36 +117,6 @@ public class AtsMain {
             EXECUTOR_SERVICE.scheduleWithFixedDelay(exchangeRun, 0,
                     DSXUtils.getRateLimitFromProperties(RATE_LIMIT_CONFIG, exchangeName), TimeUnit.SECONDS);
         }
-    }
-
-    public static BigDecimal getVolumeBeforeOrder(Exchange exchange, BigDecimal price) throws IOException {
-        MarketDataService marketDataService = exchange.getMarketDataService();
-        BigDecimal volume = BigDecimal.ZERO;
-
-        List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-        for (LimitOrder order : orders) {
-            if (order.getLimitPrice().compareTo(price) > 0) {
-                volume = volume.add(order.getTradableAmount());
-            }
-        }
-        return volume;
-    }
-
-    public static BigDecimal getPriceAfterOrder(Exchange exchange, BigDecimal price) throws IOException {
-        MarketDataService marketDataService = exchange.getMarketDataService();
-        List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-        BigDecimal priceAfterUserOrder = null;
-
-        // index in order book bids for user's order
-        int indexOrder = IntStream.range(0, orders.size())
-                .filter(i -> orders.get(i).getLimitPrice().compareTo(price) == 0)
-                .findFirst().orElse(-1);
-
-        // take order price after user's order
-        if (orders.size() - 1 > indexOrder)
-            priceAfterUserOrder = orders.get(indexOrder + 1).getLimitPrice();
-
-        return priceAfterUserOrder;
     }
 
     private static void sleep(String interruptedMessage) {
