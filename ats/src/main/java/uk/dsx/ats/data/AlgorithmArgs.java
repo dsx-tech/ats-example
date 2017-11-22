@@ -21,6 +21,7 @@ public class AlgorithmArgs {
     Exchange dsxExchange;
     TradeService tradeService;
     DSXTradeServiceRaw dsxTradeServiceRaw;
+    BigDecimal orderPrice;
 
     public AlgorithmArgs(PriceProperties priceProperties, Exchange dsxExchange, TradeService tradeService,
                          DSXTradeServiceRaw dsxTradeServiceRaw) {

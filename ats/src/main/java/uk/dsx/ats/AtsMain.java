@@ -10,7 +10,6 @@ import org.knowm.xchange.currency.CurrencyPair;
 
 import org.knowm.xchange.dsx.service.DSXTradeService;
 import org.knowm.xchange.dto.account.Balance;
-import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.kraken.KrakenExchange;
 import org.knowm.xchange.service.account.AccountService;
 import org.knowm.xchange.service.marketdata.MarketDataService;
@@ -28,7 +27,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.IntStream;
 
 import static uk.dsx.ats.utils.DSXUtils.*;
 
@@ -41,19 +39,18 @@ public class AtsMain {
     public static final Logger logInfo = LogManager.getLogger("info-log");
     public static final Logger logAudit = LogManager.getLogger("audit-log");
 
-    public static final CurrencyPair CURRENCY_PAIR = CurrencyPair.BTC_USD;
-
-    public static final String RATE_LIMIT_CONFIG = "rateLimit.json";
+    static final CurrencyPair CURRENCY_PAIR = CurrencyPair.BTC_USD;
+    private static final String RATE_LIMIT_CONFIG = "rateLimit.json";
 
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
 
-    public static final AveragePrice AVERAGE_PRICE = new AveragePrice();
-    public static final OrderBookWrapper ORDER_BOOK_WRAPPER = new OrderBookWrapper();
-    public static ScheduledExecutorService EXECUTOR_SERVICE = null;
-    public static ScheduledExecutorService DSX_EXECUTOR_SERVICE = null;
-    public static final ArrayList<ExchangeData> EXCHANGES = new ArrayList<>();
+    static final AveragePrice AVERAGE_PRICE = new AveragePrice();
+    private static final OrderBookWrapper ORDER_BOOK_WRAPPER = new OrderBookWrapper();
+    private static ScheduledExecutorService EXECUTOR_SERVICE = null;
+    private static ScheduledExecutorService DSX_EXECUTOR_SERVICE = null;
+    private static final ArrayList<ExchangeData> EXCHANGES = new ArrayList<>();
 
-    public static BigDecimal getBidOrderHighestPrice(Exchange exchange) throws IOException {
+    static BigDecimal getBidOrderHighestPrice(Exchange exchange) throws IOException {
         try {
             MarketDataService marketDataService = exchange.getMarketDataService();
             return marketDataService.getOrderBook(CURRENCY_PAIR).getBids().get(0).getLimitPrice();
@@ -62,7 +59,7 @@ public class AtsMain {
         }
     }
 
-    public static void checkLiquidity(Algorithm algorithm) {
+    private static void checkLiquidity(Algorithm algorithm) {
         Exchange exchange = algorithm.getArgs().getDsxExchange();
         MarketDataService marketDataService = exchange.getMarketDataService();
         String exchangeName = exchange.getExchangeSpecification().getExchangeName();
@@ -84,12 +81,12 @@ public class AtsMain {
         DSX_EXECUTOR_SERVICE.scheduleWithFixedDelay(exchangeRun, 0, REQUEST_TO_DSX_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
-    public static Balance getFunds(Exchange exchange) throws IOException {
+    static Balance getFunds(Exchange exchange) throws IOException {
         AccountService accountService = exchange.getAccountService();
         return accountService.getAccountInfo().getWallet().getBalance(CURRENCY_PAIR.counter);
     }
 
-    public static void initExchanges(ArrayList<Class> classes) throws IOException {
+    public static void initExchanges(ArrayList<Class> classes) {
         for (Class c : classes) {
             try {
                 EXCHANGES.add(new ExchangeData(ExchangeFactory.INSTANCE.createExchange(c.getName())));
@@ -102,7 +99,7 @@ public class AtsMain {
         AVERAGE_PRICE.setExchanges(EXCHANGES);
     }
 
-    public static void calculateAveragePriceAsync() throws IOException {
+    public static void calculateAveragePriceAsync() {
 
         for (ExchangeData exchange : AVERAGE_PRICE.getExchanges()) {
             String exchangeName = exchange.getExchange().getExchangeSpecification().getExchangeName();
@@ -116,15 +113,6 @@ public class AtsMain {
             };
             EXECUTOR_SERVICE.scheduleWithFixedDelay(exchangeRun, 0,
                     DSXUtils.getRateLimitFromProperties(RATE_LIMIT_CONFIG, exchangeName), TimeUnit.SECONDS);
-        }
-    }
-
-    private static void sleep(String interruptedMessage) {
-        try {
-            TimeUnit.SECONDS.sleep(REQUEST_TO_DSX_TIMEOUT_SECONDS);
-        } catch (InterruptedException e) {
-            if (interruptedMessage != null)
-                logInfo.warn(interruptedMessage);
         }
     }
 

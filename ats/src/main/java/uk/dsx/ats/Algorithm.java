@@ -20,7 +20,6 @@ import java.math.RoundingMode;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -37,7 +36,7 @@ import static uk.dsx.ats.utils.DSXUtils.logErrorWithException;
  */
 
 @Value
-public class Algorithm {
+class Algorithm {
 
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
     private static final BigDecimal LOW_VOLUME = new BigDecimal("0.1");
@@ -47,7 +46,7 @@ public class Algorithm {
     Logger logAudit;
     Date date;
 
-    public Algorithm(AlgorithmArgs args, Logger logInfo, Logger logAudit, Date date) {
+    Algorithm(AlgorithmArgs args, Logger logInfo, Logger logAudit, Date date) {
         this.args = args;
         this.logInfo = logInfo;
         this.logAudit = logAudit;
@@ -86,20 +85,31 @@ public class Algorithm {
         throw new InterruptedException(String.format("%s interrupted", methodName));
     }
 
-    private BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
-        MarketDataService marketDataService = exchange.getMarketDataService();
-        List<LimitOrder> bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
+    public BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
+
+        List<LimitOrder> bids = getBidOrders(exchange);
         LimitOrder highestBid;
-        while (bids.isEmpty()) {
-            bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-            logInfo("DSX orderbook is empty, waiting for orderbook appearance");
-            sleep("Request to get orderbook interrupted");
-        }
         highestBid = bids.get(0);
         return highestBid.getLimitPrice();
     }
 
-    private BigDecimal getPriceBeforeThanOrder(Exchange exchange, BigDecimal rate) throws IOException {
+    private BigDecimal getPriceBeforeOrder(Exchange exchange, BigDecimal rate) throws IOException {
+
+        List<LimitOrder> orders = getBidOrders(exchange);
+
+        BigDecimal closestToOrderPrice = null;
+
+        for (LimitOrder order : orders) {
+            BigDecimal orderPrice = order.getLimitPrice();
+            if (rate.compareTo(orderPrice) < 0) {
+                closestToOrderPrice = orderPrice;
+            }
+        }
+
+        return closestToOrderPrice;
+    }
+
+    private List<LimitOrder> getBidOrders(Exchange exchange) throws IOException {
         MarketDataService marketDataService = exchange.getMarketDataService();
         List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
         while (orders.isEmpty()) {
@@ -108,33 +118,10 @@ public class Algorithm {
             sleep("Request to get orderbook interrupted");
         }
 
-        int orderIndex = getOrderIndex(rate, orders);
-        BigDecimal priceBeforeOrder = null;
-        if (orders.size() - 1 > orderIndex) {
-            priceBeforeOrder = orders.get(orderIndex - 1).getLimitPrice();
-        }
-
-        return priceBeforeOrder;
-//        MarketDataService marketDataService = exchange.getMarketDataService();
-//        List<LimitOrder> bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-//        BigDecimal priceBeforeUsersOrder = null;
-//        while (bids.isEmpty()) {
-//            bids = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-//            logInfo("DSX orderbook is empty, waiting for orderbook appearance");
-//            sleep("Request to get orderbook interrupted");
-//        }
-//
-//        bid = bids.stream()
-//                .filter(bd -> bd.getLimitPrice().compareTo(rate) == 0).findFirst().orElse(null);
-//
-//        int orderIndex = IntStream.range(0, bids.size()).
-//        if (bid != null && bids.size() > 1) {
-//            return bids.get(bids.indexOf(bid)-1).getLimitPrice();
-//        }
-//        return null;
+        return orders;
     }
 
-    private int getOrderIndex(BigDecimal price, List<LimitOrder> orders) throws IOException {
+    private int getOrderIndex(BigDecimal price, List<LimitOrder> orders) {
 
         return IntStream.range(0, orders.size())
                 .filter(i -> orders.get(i).getLimitPrice().compareTo(price) == 0)
@@ -142,37 +129,33 @@ public class Algorithm {
     }
 
     private BigDecimal getPriceAfterOrder(Exchange exchange, BigDecimal price) throws IOException {
-        MarketDataService marketDataService = exchange.getMarketDataService();
-        List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
+
+        List<LimitOrder> orders = getBidOrders(exchange);
+
         BigDecimal priceAfterUserOrder = null;
 
-        // index in order book bids for user's order
-        int indexOrder = IntStream.range(0, orders.size())
-                .filter(i -> orders.get(i).getLimitPrice().compareTo(price) == 0)
-                .findFirst().orElse(-1);
+        int orderIndex = getOrderIndex(price, orders);
 
         // take order price after user's order
-        if (orders.size() - 1 > indexOrder)
-            priceAfterUserOrder = orders.get(indexOrder + 1).getLimitPrice();
+        if (orders.size() - 1 > orderIndex)
+            priceAfterUserOrder = orders.get(orderIndex + 1).getLimitPrice();
 
         return priceAfterUserOrder;
     }
 
-    private BigDecimal getVolumeBeforeOrder(Exchange exchange, BigDecimal price) throws IOException {
-        MarketDataService marketDataService = exchange.getMarketDataService();
+    public BigDecimal getVolumeBeforeOrder(Exchange exchange, BigDecimal price) throws IOException {
         BigDecimal volume = BigDecimal.ZERO;
 
-        List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
+        List<LimitOrder> orders = getBidOrders(exchange);
         for (LimitOrder order : orders) {
             if (order.getLimitPrice().compareTo(price) > 0) {
-                volume = volume.add(order.getTradableAmount());
+                volume = volume.add(order.getRemainingAmount());
             }
         }
         return volume;
     }
 
-    public void cancelAllOrders(DSXTradeService tradeService) throws Exception {
-
+    void cancelAllOrders(DSXTradeService tradeService) throws Exception {
         // set limit order return value for placing new order
         args.setOrderId(0L);
         args.setLimitOrderReturnValue(null);
@@ -183,15 +166,25 @@ public class Algorithm {
         logInfo("Cancelled all active account orders");
     }
 
-    private void printOrderStatus(long orderStatus) {
-        if (orderStatus == 0L) logInfo("Actual order status: Active");
-        else if (orderStatus == 1L) logInfo("Actual order status: Filled");
-        else if (orderStatus == 2L) logInfo("Actual order status: Killed");
-        else logInfo("Actual order status: {}", orderStatus);
+    private void printOrderStatus(int orderStatus) {
+        switch (orderStatus) {
+            case 0:
+                logInfo("Actual order status: Active");
+                break;
+            case 1:
+                logInfo("Actual order status: Filled");
+                break;
+            case 2:
+                logInfo("Actual order status: Killed");
+                break;
+            default:
+                logInfo("Actual order status: {}", orderStatus);
+                break;
+        }
     }
 
-    private boolean checkPriceBeforeOrder(BigDecimal orderPrice, BigDecimal dsxHighestPrice, BigDecimal stepToMove) {
-        return orderPrice.subtract(dsxHighestPrice).abs().compareTo(stepToMove) > 0;
+    private boolean checkPriceBeforeOrder(BigDecimal orderPrice, BigDecimal priceBeforeOrder, BigDecimal stepToMove) {
+        return priceBeforeOrder != null && orderPrice.subtract(priceBeforeOrder).abs().compareTo(stepToMove) > 0;
     }
 
     private boolean checkPriceAfterOrder(BigDecimal priceAfterOrder, BigDecimal rate, BigDecimal sensitivity) {
@@ -202,7 +195,7 @@ public class Algorithm {
         return volumeBeforeOrder.compareTo(volumeToMove) >= 0;
     }
 
-    public boolean executeAlgorithm() throws Exception {
+    boolean executeAlgorithm() throws Exception {
         PriceProperties priceConstants = args.getPriceProperties();
 
         Balance balance = unlimitedRepeatableRequest("getFunds", () ->
@@ -257,6 +250,7 @@ public class Algorithm {
                 String limitOrderReturnValue = unlimitedRepeatableRequest("placeLimitOrder", () ->
                         args.getTradeService().placeLimitOrder(new LimitOrder(Order.OrderType.BID, finalVolume, CURRENCY_PAIR,
                                 "", date, dsxPriceWithAddition)));
+                args.setOrderPrice(dsxPriceWithAddition);
                 logInfo("Order with id {} was placed", limitOrderReturnValue);
                 args.setLimitOrderReturnValue(limitOrderReturnValue);
             }
@@ -272,9 +266,8 @@ public class Algorithm {
                         args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
                 printOrderStatus(result.getStatus());
 
-                //get current DSX price
-                BigDecimal dsxCurrentPrice = unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
-                        getBidOrderHighestPriceDSX(args.getDsxExchange()));
+                BigDecimal priceBeforeOrder = unlimitedRepeatableRequest("getPriceBeforeOrder", () ->
+                        getPriceBeforeOrder(args.getDsxExchange(), result.getRate()));
 
                 // Order status == Filled - algorithm executed correctly
                 if (result.getStatus() == 1) {
@@ -290,18 +283,24 @@ public class Algorithm {
                         getPriceAfterOrder(args.getDsxExchange(), result.getRate()));
 
                 // good means that difference between user's order price and order's price after is less than sensitivity
-                boolean isPriceAfterOrderGood = checkPriceAfterOrder(priceAfterOrder, result.getRate(), priceConstants.getSensitivity());
+                boolean isPriceAfterOrderGood = checkPriceAfterOrder(
+                        priceAfterOrder,
+                        result.getRate(),
+                        priceConstants.getSensitivity());
 
                 // good means that difference between user's order price and order's price before is less than step to move
-                boolean isPriceBeforeOrderGood = checkPriceBeforeOrder(result.getRate(), dsxCurrentPrice, priceConstants.getStepToMove());
+                boolean isPriceBeforeOrderGood = checkPriceBeforeOrder(
+                        result.getRate(),
+                        priceBeforeOrder,
+                        priceConstants.getStepToMove());
 
                 boolean isVolumeGood = checkVolumeBeforeOrder(volumeBeforeOrder, priceConstants.getVolumeToMove());
 
                 if ((priceAfterOrder == null
-                        || dsxCurrentPrice.compareTo(priceAfterOrder.add(priceConstants.getSensitivity())) <= 0)
+                        || priceBeforeOrder != null && priceBeforeOrder.compareTo(priceAfterOrder.add(priceConstants.getSensitivity())) <= 0)
                         && (isPriceBeforeOrderGood || isVolumeGood || isPriceAfterOrderGood)) {
                     //if price is good and order needs to be replaced (with better price). check order status again
-                    long orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
+                    int orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
                             args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
 
                     printOrderStatus(orderStatus);
@@ -326,19 +325,27 @@ public class Algorithm {
     private void awaitGoodPrice() throws Exception {
         PriceProperties priceProperties = args.getPriceProperties();
 
-        while (args.getAveragePrice() == null || !isDSXPriceGood(priceProperties)) {
+        while (args.getAveragePrice() == null || isDSXPriceBad(priceProperties)) {
             //get new average price from other exchanges
             args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
                     priceProperties.getPriceScale()));
 
             //get DSX price
-            args.setDsxPrice(unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
-                    getBidOrderHighestPriceDSX(args.getDsxExchange())));
+            if (args.getOrderPrice() == null) {
+                args.setDsxPrice(unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
+                        getBidOrderHighestPriceDSX(args.getDsxExchange())));
+            } else {
+                BigDecimal priceBeforeOrder = unlimitedRepeatableRequest("getPriceBeforeOrder", () ->
+                        getPriceBeforeOrder(args.getDsxExchange(), args.getOrderPrice()));
+
+                if (priceBeforeOrder != null)
+                    args.setDsxPrice(priceBeforeOrder);
+            }
 
             if (args.getAveragePrice() != null) {
                 logInfo("Average price: {}, dsxPrice: {}", args.getAveragePrice(), args.getDsxPrice());
                 //if DSX price is bad
-                if (!isDSXPriceGood(priceProperties)) {
+                if (isDSXPriceBad(priceProperties)) {
                     //if we have previously placed order - we should kill it or it can be filled by bad price.
                     if (args.getOrderId() != 0L) {
                         try {
@@ -363,12 +370,12 @@ public class Algorithm {
         }
     }
 
-    private boolean isDSXPriceGood(PriceProperties priceProperties) {
+    private boolean isDSXPriceBad(PriceProperties priceProperties) {
 
         args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
                 priceProperties.getPriceScale()));
         BigDecimal averagePrice = args.getAveragePrice();
         BigDecimal dsxPrice = args.getDsxPrice();
-        return averagePrice != null && averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage())) >= 0;
+        return averagePrice == null || averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage())) < 0;
     }
 }

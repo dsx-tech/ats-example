@@ -42,4 +42,5 @@ dependencies {
     compile "org.apache.logging.log4j:log4j-core:2.7"
 
     compileOnly "org.projectlombok:lombok:1.16.16"
+
 }

@@ -46,16 +46,16 @@ public class AtsAlgoTest {
     private static final Logger logInfo = LogManager.getLogger("info-log");
     private static final Logger logAudit = LogManager.getLogger("audit-log");
 
-    Exchange exchangeMock;
-    Exchange exchangeMockAfterTrade;
-    TradeService tradeService;
-    DSXTradeServiceRaw dsxTradeServiceRaw;
+    private Exchange exchangeMock;
+    private Exchange exchangeMockAfterTrade;
+    private TradeService tradeService;
+    private DSXTradeServiceRaw dsxTradeServiceRaw;
 
-    Date date;
-    AlgorithmArgs algorithmArgs;
-    Algorithm algorithm;
+    private Date date;
+    private AlgorithmArgs algorithmArgs;
+    private Algorithm algorithm;
 
-    ExchangeData exchangeData;
+    private ExchangeData exchangeData;
 
     @Before
     public void prepare() {
@@ -81,15 +81,16 @@ public class AtsAlgoTest {
     @PrepareForTest({AtsMain.class})
     @Test(timeout = 20000)
     public void testAlgoExec() throws Exception {
+
         PowerMockito.when(getBidOrderHighestPrice(exchangeMock)).thenReturn(new BigDecimal("2500"));
-        PowerMockito.when(getBidOrderHighestPriceDSX(exchangeMock)).thenReturn(new BigDecimal("2400"));
+        PowerMockito.when(algorithm.getBidOrderHighestPriceDSX(exchangeMock)).thenReturn(new BigDecimal("2400"));
 
         PowerMockito.when(dsxTradeServiceRaw.cancelDSXOrder(1L)).thenReturn(new DSXCancelOrderResult(null, 1L));
         PowerMockito.when(dsxTradeServiceRaw.cancelDSXOrder(2L)).thenReturn(new DSXCancelOrderResult(null, 2L));
         PowerMockito.when(getFunds(exchangeMock)).thenReturn(new Balance(Currency.USD,
                 new BigDecimal("20000"), new BigDecimal("20000")));
 
-        BigDecimal dsxPriceMock = getBidOrderHighestPriceDSX(exchangeMock);
+        BigDecimal dsxPriceMock = algorithm.getBidOrderHighestPriceDSX(exchangeMock);
         BigDecimal dsxPriceWithAdditionMock = dsxPriceMock.add(DEFAULT_PRICE_ADDITION);
         BigDecimal volumeMock = getFunds(exchangeMock).getAvailable().divide(dsxPriceWithAdditionMock, DEFAULT_VOLUME_SCALE,
                 RoundingMode.DOWN);
@@ -105,9 +106,9 @@ public class AtsAlgoTest {
                 "ask", new BigDecimal("10000"), new BigDecimal("20000"), new BigDecimal("2400.01"),
                 date.getTime(), 0, "type", null));
 
-        PowerMockito.when(getVolumeBeforeOrder(exchangeMock, dsxPriceWithAdditionMock)).thenReturn(new BigDecimal("2401"));
+        PowerMockito.when(algorithm.getVolumeBeforeOrder(exchangeMock, dsxPriceWithAdditionMock)).thenReturn(new BigDecimal("2401"));
 
-        PowerMockito.when(getBidOrderHighestPriceDSX(exchangeMockAfterTrade)).thenReturn(new BigDecimal("2401"));
+        PowerMockito.when(algorithm.getBidOrderHighestPriceDSX(exchangeMockAfterTrade)).thenReturn(new BigDecimal("2401"));
 
         boolean isAlgorithmEnded = false;
         while (!isAlgorithmEnded) {
@@ -124,13 +125,13 @@ public class AtsAlgoTest {
     @Test(timeout = 20000)
     public void testAlgoExecWithCancel() throws Exception {
         PowerMockito.when(getBidOrderHighestPrice(exchangeMock)).thenReturn(new BigDecimal("2500"));
-        PowerMockito.when(getBidOrderHighestPriceDSX(exchangeMock)).thenReturn(new BigDecimal("2410"));
+        PowerMockito.when(algorithm.getBidOrderHighestPriceDSX(exchangeMock)).thenReturn(new BigDecimal("2410"));
 
         PowerMockito.when(dsxTradeServiceRaw.cancelDSXOrder(2L)).thenReturn(new DSXCancelOrderResult(null, 2L));
         PowerMockito.when(getFunds(exchangeMock)).thenReturn(new Balance(Currency.USD,
                 new BigDecimal("20000"), new BigDecimal("20000")));
 
-        BigDecimal dsxPriceMock = getBidOrderHighestPriceDSX(exchangeMock);
+        BigDecimal dsxPriceMock = algorithm.getBidOrderHighestPriceDSX(exchangeMock);
         BigDecimal dsxPriceWithAdditionMock = dsxPriceMock.add(DEFAULT_PRICE_ADDITION);
         BigDecimal volumeMock = getFunds(exchangeMock).getAvailable().divide(dsxPriceWithAdditionMock, DEFAULT_VOLUME_SCALE,
                 RoundingMode.DOWN);
@@ -148,9 +149,9 @@ public class AtsAlgoTest {
                         "ask", new BigDecimal("10000"), new BigDecimal("20000"), new BigDecimal("2400.01"),
                         date.getTime(), 1, "type", null));
 
-        PowerMockito.when(getVolumeBeforeOrder(exchangeMock, dsxPriceWithAdditionMock)).thenReturn(new BigDecimal("2401"));
+        PowerMockito.when(algorithm.getVolumeBeforeOrder(exchangeMock, dsxPriceWithAdditionMock)).thenReturn(new BigDecimal("2401"));
 
-        PowerMockito.when(getBidOrderHighestPriceDSX(exchangeMockAfterTrade)).thenReturn(new BigDecimal("2401"));
+        PowerMockito.when(algorithm.getBidOrderHighestPriceDSX(exchangeMockAfterTrade)).thenReturn(new BigDecimal("2401"));
 
         boolean isAlgorithmEnded = false;
         while (!isAlgorithmEnded) {

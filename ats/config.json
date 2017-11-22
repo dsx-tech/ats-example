@@ -1,8 +1,8 @@
 {
   "DSXConfig": {
-    "url": "https://dsx.uk",
-    "secretKey": "W1Z8M50O8DHZZNZTCDY3YNE266UDCH1OHDRMFRSVJOB5",
-    "apiKey": "da85dcb0-46bc-4276-ae4d-acf397672680"
+    "url": "http://localhost/",
+    "secretKey": "FM5K1UEGXDTIM8QE4C8VS4FKHRTFJ2HLRVEFTKFLWS7T",
+    "apiKey": "7c65d5fb-6554-4d53-a697-07f998575bbe"
   },
   "PriceConfig": {
     "pricePercentage": "1.01",
@@ -12,8 +12,10 @@
     "averagePriceUpdateTime": "3000",
     "timestampForPriceUpdate": "10",
     "dsxAccountType": "DEMO",
-    "stepToMove": "1",
+    "stepToMove": "0.1",
     "volumeToMove": "0.05",
-    "waitingTimeForOrderCheck": "5"
+    "waitingTimeForOrderCheck": "5",
+    "waitingTimeForCheckingAccountFunds": 10,
+    "sensitivity": 5
   }
 }
