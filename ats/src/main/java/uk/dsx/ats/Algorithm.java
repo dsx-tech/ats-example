@@ -9,17 +9,20 @@ import org.knowm.xchange.dto.Order;
 import org.knowm.xchange.dto.account.Balance;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.exceptions.ExchangeException;
+import org.knowm.xchange.exceptions.NonceException;
 import org.knowm.xchange.service.marketdata.MarketDataService;
 import si.mazi.rescu.HttpStatusIOException;
 import uk.dsx.ats.data.AlgorithmArgs;
 import uk.dsx.ats.data.PriceProperties;
 
+import javax.net.ssl.SSLHandshakeException;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.security.cert.CertificateException;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -39,6 +42,8 @@ import static uk.dsx.ats.utils.DSXUtils.logErrorWithException;
 class Algorithm {
 
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
+    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT = 60;
+
     private static final BigDecimal LOW_VOLUME = new BigDecimal("0.1");
 
     AlgorithmArgs args;
@@ -58,31 +63,40 @@ class Algorithm {
         T get() throws Exception;
     }
 
-    private void sleep(String interruptedMessage) {
-        try {
-            TimeUnit.SECONDS.sleep(REQUEST_TO_DSX_TIMEOUT_SECONDS);
-        } catch (InterruptedException e) {
-            if (interruptedMessage != null)
-                logInfo.warn(interruptedMessage);
-        }
-    }
-
     private <T> T unlimitedRepeatableRequest(String methodName, ConnectorRequest<T> requestObject) throws Exception {
         while (!Thread.interrupted()) {
             try {
                 return requestObject.get();
-            } catch (ConnectException | UnknownHostException | SocketTimeoutException | HttpStatusIOException e) {
+            } catch (ConnectException | UnknownHostException | SocketTimeoutException | HttpStatusIOException
+                    | NonceException | CertificateException | SSLHandshakeException e) {
                 logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
                 sleep(String.format("%s interrupted", methodName));
             } catch (Exception e) {
                 if (e.getMessage().contains("418")) {
                     logErrorWithException("Cannot connect to dsx.uk, waiting 1 sec to try again", e);
                     sleep(String.format("%s interrupted", methodName));
-                } else
+                } else if (e.getMessage().contains("Exceeded limit request per minute")) {
+                    logError("Exceeded limit request per minute, waiting 1 minute");
+                    sleepWithSeconds(String.format("%s interrupted", methodName), REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT);
+                }
+                else
                     throw e;
             }
         }
         throw new InterruptedException(String.format("%s interrupted", methodName));
+    }
+
+    public static void sleep(String interruptedMessage) {
+        sleepWithSeconds(interruptedMessage, REQUEST_TO_DSX_TIMEOUT_SECONDS);
+    }
+
+    public static void sleepWithSeconds(String interruptedMessage, int seconds) {
+        try {
+            TimeUnit.SECONDS.sleep(seconds);
+        } catch (InterruptedException e) {
+            if (interruptedMessage != null)
+                logError(interruptedMessage);
+        }
     }
 
     public BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
@@ -91,22 +105,6 @@ class Algorithm {
         LimitOrder highestBid;
         highestBid = bids.get(0);
         return highestBid.getLimitPrice();
-    }
-
-    private BigDecimal getPriceBeforeOrder(Exchange exchange, BigDecimal rate) throws IOException {
-
-        List<LimitOrder> orders = getBidOrders(exchange);
-
-        BigDecimal closestToOrderPrice = null;
-
-        for (LimitOrder order : orders) {
-            BigDecimal orderPrice = order.getLimitPrice();
-            if (rate.compareTo(orderPrice) < 0) {
-                closestToOrderPrice = orderPrice;
-            }
-        }
-
-        return closestToOrderPrice;
     }
 
     private List<LimitOrder> getBidOrders(Exchange exchange) throws IOException {
@@ -266,8 +264,8 @@ class Algorithm {
                         args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
                 printOrderStatus(result.getStatus());
 
-                BigDecimal priceBeforeOrder = unlimitedRepeatableRequest("getPriceBeforeOrder", () ->
-                        getPriceBeforeOrder(args.getDsxExchange(), result.getRate()));
+                BigDecimal priceBeforeOrder = unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
+                        getBidOrderHighestPriceDSX(args.getDsxExchange()));
 
                 // Order status == Filled - algorithm executed correctly
                 if (result.getStatus() == 1) {
@@ -296,9 +294,7 @@ class Algorithm {
 
                 boolean isVolumeGood = checkVolumeBeforeOrder(volumeBeforeOrder, priceConstants.getVolumeToMove());
 
-                if ((priceAfterOrder == null
-                        || priceBeforeOrder != null && priceBeforeOrder.compareTo(priceAfterOrder.add(priceConstants.getSensitivity())) <= 0)
-                        && (isPriceBeforeOrderGood || isVolumeGood || isPriceAfterOrderGood)) {
+                if (isPriceBeforeOrderGood || isVolumeGood || isPriceAfterOrderGood) {
                     //if price is good and order needs to be replaced (with better price). check order status again
                     int orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
                             args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
@@ -331,16 +327,9 @@ class Algorithm {
                     priceProperties.getPriceScale()));
 
             //get DSX price
-            if (args.getOrderPrice() == null) {
-                args.setDsxPrice(unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
-                        getBidOrderHighestPriceDSX(args.getDsxExchange())));
-            } else {
-                BigDecimal priceBeforeOrder = unlimitedRepeatableRequest("getPriceBeforeOrder", () ->
-                        getPriceBeforeOrder(args.getDsxExchange(), args.getOrderPrice()));
+            args.setDsxPrice(unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
+                    getBidOrderHighestPriceDSX(args.getDsxExchange())));
 
-                if (priceBeforeOrder != null)
-                    args.setDsxPrice(priceBeforeOrder);
-            }
 
             if (args.getAveragePrice() != null) {
                 logInfo("Average price: {}, dsxPrice: {}", args.getAveragePrice(), args.getDsxPrice());
