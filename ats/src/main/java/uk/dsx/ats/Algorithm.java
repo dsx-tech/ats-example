@@ -9,30 +9,21 @@ import org.knowm.xchange.dto.Order;
 import org.knowm.xchange.dto.account.Balance;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.exceptions.ExchangeException;
-import org.knowm.xchange.exceptions.NonceException;
 import org.knowm.xchange.service.marketdata.MarketDataService;
-import si.mazi.rescu.HttpStatusIOException;
 import uk.dsx.ats.data.AlgorithmArgs;
 import uk.dsx.ats.data.PriceProperties;
+import uk.dsx.ats.utils.DSXUtils;
 
-import javax.net.ssl.SSLHandshakeException;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.net.ConnectException;
-import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
-import java.security.cert.CertificateException;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static uk.dsx.ats.AtsMain.*;
-import static uk.dsx.ats.utils.DSXUtils.PRICE_PROPERTIES;
-import static uk.dsx.ats.utils.DSXUtils.logInfo;
-import static uk.dsx.ats.utils.DSXUtils.logError;
-import static uk.dsx.ats.utils.DSXUtils.logErrorWithException;
+import static uk.dsx.ats.utils.DSXUtils.*;
 
 /**
  * @author Mikhail Wall
@@ -40,9 +31,6 @@ import static uk.dsx.ats.utils.DSXUtils.logErrorWithException;
 
 @Value
 class Algorithm {
-
-    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
-    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT = 60;
 
     private static final BigDecimal LOW_VOLUME = new BigDecimal("0.1");
 
@@ -58,48 +46,7 @@ class Algorithm {
         this.date = date;
     }
 
-    @FunctionalInterface
-    public interface ConnectorRequest<T> {
-        T get() throws Exception;
-    }
-
-    private <T> T unlimitedRepeatableRequest(String methodName, ConnectorRequest<T> requestObject) throws Exception {
-        while (!Thread.interrupted()) {
-            try {
-                return requestObject.get();
-            } catch (ConnectException | UnknownHostException | SocketTimeoutException | HttpStatusIOException
-                    | NonceException | CertificateException | SSLHandshakeException e) {
-                logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
-                sleep(String.format("%s interrupted", methodName));
-            } catch (Exception e) {
-                if (e.getMessage().contains("418")) {
-                    logErrorWithException("Cannot connect to dsx.uk, waiting 1 sec to try again", e);
-                    sleep(String.format("%s interrupted", methodName));
-                } else if (e.getMessage().contains("Exceeded limit request per minute")) {
-                    logError("Exceeded limit request per minute, waiting 1 minute");
-                    sleepWithSeconds(String.format("%s interrupted", methodName), REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT);
-                }
-                else
-                    throw e;
-            }
-        }
-        throw new InterruptedException(String.format("%s interrupted", methodName));
-    }
-
-    public static void sleep(String interruptedMessage) {
-        sleepWithSeconds(interruptedMessage, REQUEST_TO_DSX_TIMEOUT_SECONDS);
-    }
-
-    public static void sleepWithSeconds(String interruptedMessage, int seconds) {
-        try {
-            TimeUnit.SECONDS.sleep(seconds);
-        } catch (InterruptedException e) {
-            if (interruptedMessage != null)
-                logError(interruptedMessage);
-        }
-    }
-
-    public BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
+    private BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
 
         List<LimitOrder> bids = getBidOrders(exchange);
         LimitOrder highestBid;
@@ -113,7 +60,7 @@ class Algorithm {
         while (orders.isEmpty()) {
             orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
             logInfo("DSX orderbook is empty, waiting for orderbook appearance");
-            sleep("Request to get orderbook interrupted");
+            DSXUtils.sleep("Request to get orderbook interrupted");
         }
 
         return orders;
@@ -141,7 +88,7 @@ class Algorithm {
         return priceAfterUserOrder;
     }
 
-    public BigDecimal getVolumeBeforeOrder(Exchange exchange, BigDecimal price) throws IOException {
+    private BigDecimal getVolumeBeforeOrder(Exchange exchange, BigDecimal price) throws IOException {
         BigDecimal volume = BigDecimal.ZERO;
 
         List<LimitOrder> orders = getBidOrders(exchange);
@@ -160,7 +107,7 @@ class Algorithm {
         // setting average price to null for updating dsx price, when cancelling order
         args.setAveragePrice(null);
 
-        unlimitedRepeatableRequest("cancelAllOrders", tradeService::cancelAllOrders);
+        DSXUtils.unlimitedRepeatableRequest("cancelAllOrders", tradeService::cancelAllOrders);
         logInfo("Cancelled all active account orders");
     }
 
@@ -196,7 +143,7 @@ class Algorithm {
     boolean executeAlgorithm() throws Exception {
         PriceProperties priceConstants = args.getPriceProperties();
 
-        Balance balance = unlimitedRepeatableRequest("getFunds", () ->
+        Balance balance = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
                 getFunds(args.getDsxExchange()));
 
         logInfo("Account funds: {}", balance);
@@ -206,7 +153,7 @@ class Algorithm {
         //calculating data for placing order on our exchange
         BigDecimal dsxPriceWithAddition = args.getDsxPrice().add(priceConstants.getPriceAddition());
 
-        BigDecimal volume = unlimitedRepeatableRequest("getFunds", () ->
+        BigDecimal volume = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
                 getFunds(args.getDsxExchange()).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
                         RoundingMode.DOWN));
 
@@ -214,7 +161,7 @@ class Algorithm {
         if (volume.compareTo(LOW_VOLUME) > 0) {
 
             cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
-            volume = unlimitedRepeatableRequest("getFunds", () ->
+            volume = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
                     getFunds(args.getDsxExchange()).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
                             RoundingMode.DOWN));
             logInfo("Cancelled all previous orders in case there was placed order");
@@ -229,7 +176,7 @@ class Algorithm {
                 //if we have previously placed order we should check it's status
                 if (args.getOrderId() != 0L) {
                     // if order status is filled - algorithm executed successfully
-                    int orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
+                    int orderStatus = DSXUtils.unlimitedRepeatableRequest("getOrderStatus", () ->
                             args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
 
                     if (orderStatus == 1) {
@@ -245,7 +192,7 @@ class Algorithm {
             if (args.getLimitOrderReturnValue() == null) {
                 //place new order
                 BigDecimal finalVolume = volume;
-                String limitOrderReturnValue = unlimitedRepeatableRequest("placeLimitOrder", () ->
+                String limitOrderReturnValue = DSXUtils.unlimitedRepeatableRequest("placeLimitOrder", () ->
                         args.getTradeService().placeLimitOrder(new LimitOrder(Order.OrderType.BID, finalVolume, CURRENCY_PAIR,
                                 "", date, dsxPriceWithAddition)));
                 args.setOrderPrice(dsxPriceWithAddition);
@@ -260,11 +207,11 @@ class Algorithm {
 
             //get actual order status
             if (args.getOrderId() != 0L) {
-                DSXOrderStatusResult result = unlimitedRepeatableRequest("getOrderStatus", () ->
+                DSXOrderStatusResult result = DSXUtils.unlimitedRepeatableRequest("getOrderStatus", () ->
                         args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
                 printOrderStatus(result.getStatus());
 
-                BigDecimal priceBeforeOrder = unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
+                BigDecimal priceBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
                         getBidOrderHighestPriceDSX(args.getDsxExchange()));
 
                 // Order status == Filled - algorithm executed correctly
@@ -274,10 +221,10 @@ class Algorithm {
                 }
 
                 // if order status not filled - check that order is actual (top bid or so and price is good).
-                BigDecimal volumeBeforeOrder = unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
+                BigDecimal volumeBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
                         getVolumeBeforeOrder(args.getDsxExchange(), result.getRate()));
 
-                BigDecimal priceAfterOrder = unlimitedRepeatableRequest("getPriceAfterOrder", () ->
+                BigDecimal priceAfterOrder = DSXUtils.unlimitedRepeatableRequest("getPriceAfterOrder", () ->
                         getPriceAfterOrder(args.getDsxExchange(), result.getRate()));
 
                 // good means that difference between user's order price and order's price after is less than sensitivity
@@ -296,13 +243,13 @@ class Algorithm {
 
                 if (isPriceBeforeOrderGood || isVolumeGood || isPriceAfterOrderGood) {
                     //if price is good and order needs to be replaced (with better price). check order status again
-                    int orderStatus = unlimitedRepeatableRequest("getOrderStatus", () ->
+                    int orderStatus = DSXUtils.unlimitedRepeatableRequest("getOrderStatus", () ->
                             args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
 
                     printOrderStatus(orderStatus);
                     // if order status is not filled or killed, then cancel order so we can place another order
                     if (orderStatus != 1 && orderStatus != 2) {
-                        unlimitedRepeatableRequest("cancelOrder", () ->
+                        DSXUtils.unlimitedRepeatableRequest("cancelOrder", () ->
                                 args.getTradeService().cancelOrder(args.getLimitOrderReturnValue()));
                         logInfo("Cancelling order, because better price exists");
                         args.setOrderId(0L);
@@ -327,7 +274,7 @@ class Algorithm {
                     priceProperties.getPriceScale()));
 
             //get DSX price
-            args.setDsxPrice(unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
+            args.setDsxPrice(DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
                     getBidOrderHighestPriceDSX(args.getDsxExchange())));
 
 
@@ -354,7 +301,7 @@ class Algorithm {
                 // if we cannot get price from any exchange than cancel order, bcs average price can become better
                 cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
                 logInfo("Waiting for connection to exchanges");
-                sleep("Sleep was interrupted");
+                DSXUtils.sleep("Sleep was interrupted");
             }
         }
     }

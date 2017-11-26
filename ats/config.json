@@ -1,10 +1,11 @@
 {
   "DSXConfig": {
     "url": "http://localhost/",
-    "secretKey": "R0PN1K8QUDLTJCLXEIYYVZOCO4FW8W44WCKMHVHUD23Z",
-    "apiKey": "ddd4f80e-036f-4460-bd5c-05ea38e5b212"
+    "secretKey": "VVFL8VVQG4HT8MG80P10AQSJQ46R1DHMKI4ZHHQ4N2QW",
+    "apiKey": "604f366b-11eb-4a7b-ac2e-caa9e5fbfdca"
   },
   "PriceConfig": {
+    "currencyPair": "BTC/EUR",
     "pricePercentage": "1.01",
     "priceScale": 5,
     "volumeScale": 4,

@@ -5,7 +5,10 @@ import lombok.extern.log4j.Log4j2;
 import org.knowm.xchange.Exchange;
 import org.knowm.xchange.ExchangeFactory;
 import org.knowm.xchange.ExchangeSpecification;
+import org.knowm.xchange.currency.CurrencyPair;
 import org.knowm.xchange.dsx.DSXExchange;
+import org.knowm.xchange.exceptions.NonceException;
+import si.mazi.rescu.HttpStatusIOException;
 import uk.dsx.ats.AtsMain;
 import uk.dsx.ats.data.Config;
 import uk.dsx.ats.data.ExchangeProperties;
@@ -14,7 +17,13 @@ import uk.dsx.ats.data.PriceProperties;
 import javax.json.Json;
 import javax.json.JsonObject;
 import javax.json.JsonReader;
+import javax.net.ssl.SSLHandshakeException;
 import java.io.*;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
+import java.security.cert.CertificateException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author Mikhail Wall
@@ -25,9 +34,53 @@ public class DSXUtils {
 
     private static final String CONFIG_FILE = "config.json";
 
+    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
+    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT = 60;
+
     private static Config CONFIG = DSXUtils.getPropertiesFromConfig(CONFIG_FILE);
     public static PriceProperties PRICE_PROPERTIES = CONFIG.getPriceProperties();
+    public static CurrencyPair CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getCurrencyPair());
 
+    @FunctionalInterface
+    public interface ConnectorRequest<T> {
+        T get() throws Exception;
+    }
+
+    public static <T> T unlimitedRepeatableRequest(String methodName, ConnectorRequest<T> requestObject) throws Exception {
+        while (!Thread.interrupted()) {
+            try {
+                return requestObject.get();
+            } catch (ConnectException | UnknownHostException | SocketTimeoutException | HttpStatusIOException
+                    | NonceException | CertificateException | SSLHandshakeException e) {
+                logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
+                sleep(String.format("%s interrupted", methodName));
+            } catch (Exception e) {
+                if (e.getMessage().contains("418")) {
+                    logErrorWithException("Cannot connect to dsx.uk, waiting 1 sec to try again", e);
+                    sleep(String.format("%s interrupted", methodName));
+                } else if (e.getMessage().contains("Exceeded limit request per minute")) {
+                    logError("Exceeded limit request per minute, waiting 1 minute");
+                    sleepWithSeconds(String.format("%s interrupted", methodName), REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT);
+                }
+                else
+                    throw e;
+            }
+        }
+        throw new InterruptedException(String.format("%s interrupted", methodName));
+    }
+
+    public static void sleep(String interruptedMessage) {
+        sleepWithSeconds(interruptedMessage, REQUEST_TO_DSX_TIMEOUT_SECONDS);
+    }
+
+    private static void sleepWithSeconds(String interruptedMessage, int seconds) {
+        try {
+            TimeUnit.SECONDS.sleep(seconds);
+        } catch (InterruptedException e) {
+            if (interruptedMessage != null)
+                logError(interruptedMessage);
+        }
+    }
     public static Exchange createExchange() throws IOException {
 
         ExchangeSpecification exSpec = new ExchangeSpecification(DSXExchange.class);

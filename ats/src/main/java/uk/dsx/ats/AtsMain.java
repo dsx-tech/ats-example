@@ -6,7 +6,6 @@ import org.knowm.xchange.Exchange;
 import org.knowm.xchange.ExchangeFactory;
 import org.knowm.xchange.bitfinex.v1.BitfinexExchange;
 import org.knowm.xchange.bitstamp.BitstampExchange;
-import org.knowm.xchange.currency.CurrencyPair;
 
 import org.knowm.xchange.dsx.service.DSXTradeService;
 import org.knowm.xchange.dto.account.Balance;
@@ -39,7 +38,6 @@ public class AtsMain {
     public static final Logger logInfo = LogManager.getLogger("info-log");
     public static final Logger logAudit = LogManager.getLogger("audit-log");
 
-    static final CurrencyPair CURRENCY_PAIR = CurrencyPair.BTC_USD;
     private static final String RATE_LIMIT_CONFIG = "rateLimit.json";
 
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
@@ -50,7 +48,7 @@ public class AtsMain {
     private static ScheduledExecutorService DSX_EXECUTOR_SERVICE = null;
     private static final ArrayList<ExchangeData> EXCHANGES = new ArrayList<>();
 
-    static BigDecimal getBidOrderHighestPrice(Exchange exchange) throws IOException {
+    private static BigDecimal getBidOrderHighestPrice(Exchange exchange) throws IOException {
         try {
             MarketDataService marketDataService = exchange.getMarketDataService();
             return marketDataService.getOrderBook(CURRENCY_PAIR).getBids().get(0).getLimitPrice();
@@ -86,7 +84,7 @@ public class AtsMain {
         return accountService.getAccountInfo().getWallet().getBalance(CURRENCY_PAIR.counter);
     }
 
-    public static void initExchanges(ArrayList<Class> classes) {
+    private static void initExchanges(ArrayList<Class> classes) {
         for (Class c : classes) {
             try {
                 EXCHANGES.add(new ExchangeData(ExchangeFactory.INSTANCE.createExchange(c.getName())));
@@ -99,7 +97,7 @@ public class AtsMain {
         AVERAGE_PRICE.setExchanges(EXCHANGES);
     }
 
-    public static void calculateAveragePriceAsync() {
+    private static void calculateAveragePriceAsync() {
 
         for (ExchangeData exchange : AVERAGE_PRICE.getExchanges()) {
             String exchangeName = exchange.getExchange().getExchangeSpecification().getExchangeName();
