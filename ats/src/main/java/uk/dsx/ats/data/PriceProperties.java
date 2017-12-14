@@ -13,11 +13,13 @@ import java.math.BigDecimal;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PriceProperties {
 
-    public static final String DEFAULT_CURRENCY_PAIR = "BTC/USD";
+    public static final String DEFAULT_DSX_CURRENCY_PAIR = "BTC/EUR";
+    public static final String DEFAULT_EXCHANGES_CURRENCY_PAIR = "BTC/USD";
     public static final BigDecimal DEFAULT_STEP_TO_MOVE = new BigDecimal("0.001");
     public static final BigDecimal DEFAULT_VOLUME_TO_MOVE = new BigDecimal("0.05");
     public static final long DEFAULT_AVERAGE_PRICE_UPDATE_TIME = 2000L;
     public static final BigDecimal DEFAULT_PRICE_PERCENTAGE = new BigDecimal("1.01");
+    public static final BigDecimal DEFAULT_FX_PERCENTAGE = new BigDecimal("1.01");
     public static final int DEFAULT_VOLUME_SCALE = 4;
     public static final BigDecimal DEFAULT_PRICE_ADDITION = new BigDecimal("0.01");
     public static final long DEFAULT_TIMESTAMP_FOR_PRICE_UPDATE = 10L;
@@ -27,8 +29,10 @@ public class PriceProperties {
     public static final int DEFAULT_NEW_ORDER_TIME = 300;
     public static final BigDecimal DEFAULT_SENSITIVITY = new BigDecimal("5");
 
-    String currencyPair = DEFAULT_CURRENCY_PAIR;
+    String dsxCurrencyPair = DEFAULT_DSX_CURRENCY_PAIR;
+    String exchangesCurrencyPair = DEFAULT_EXCHANGES_CURRENCY_PAIR;
     BigDecimal pricePercentage = DEFAULT_PRICE_PERCENTAGE;
+    BigDecimal fxPercentage = DEFAULT_FX_PERCENTAGE;
     int priceScale = DEFAULT_PRICE_SCALE;
     int volumeScale = DEFAULT_VOLUME_SCALE;
     BigDecimal priceAddition = DEFAULT_PRICE_ADDITION;

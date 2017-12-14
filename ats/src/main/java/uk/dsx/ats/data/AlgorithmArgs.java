@@ -16,6 +16,7 @@ public class AlgorithmArgs {
     PriceProperties priceProperties;
     BigDecimal dsxPrice;
     BigDecimal averagePrice;
+    volatile BigDecimal fxRate;
     String limitOrderReturnValue;
     long orderId;
     Exchange dsxExchange;

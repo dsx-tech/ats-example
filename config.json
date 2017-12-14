@@ -5,7 +5,10 @@
     "apiKey": "19362651-64f6-4995-88fa-230a859a8f55"
   },
   "PriceConfig": {
+    "exchangesCurrencyPair": "BTC/USD",
+    "dsxCurrencyPair": "BTC/EUR",
     "pricePercentage": "1.01",
+    "fxPercentage": "1.01",
     "priceScale": 5,
     "volumeScale": 4,
     "priceAddition": "0.01",

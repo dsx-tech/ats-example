@@ -3,6 +3,7 @@ package uk.dsx.ats;
 import lombok.Value;
 import org.apache.logging.log4j.Logger;
 import org.knowm.xchange.Exchange;
+import org.knowm.xchange.currency.CurrencyPair;
 import org.knowm.xchange.dsx.dto.trade.DSXOrderStatusResult;
 import org.knowm.xchange.dsx.service.DSXTradeService;
 import org.knowm.xchange.dto.Order;
@@ -13,6 +14,7 @@ import org.knowm.xchange.service.marketdata.MarketDataService;
 import uk.dsx.ats.data.AlgorithmArgs;
 import uk.dsx.ats.data.PriceProperties;
 import uk.dsx.ats.utils.DSXUtils;
+import uk.dsx.ats.utils.FixerUtils;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -46,19 +48,18 @@ class Algorithm {
         this.date = date;
     }
 
-    private BigDecimal getBidOrderHighestPriceDSX(Exchange exchange) throws IOException {
-
-        List<LimitOrder> bids = getBidOrders(exchange);
+    private BigDecimal getBidOrderHighestPriceDSX() throws IOException {
+        List<LimitOrder> bids = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
         LimitOrder highestBid;
         highestBid = bids.get(0);
         return highestBid.getLimitPrice();
     }
 
-    private List<LimitOrder> getBidOrders(Exchange exchange) throws IOException {
+    private List<LimitOrder> getBidOrders(Exchange exchange, CurrencyPair currencyPair) throws IOException {
         MarketDataService marketDataService = exchange.getMarketDataService();
-        List<LimitOrder> orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
+        List<LimitOrder> orders = marketDataService.getOrderBook(currencyPair, PRICE_PROPERTIES.getDsxAccountType()).getBids();
         while (orders.isEmpty()) {
-            orders = marketDataService.getOrderBook(CURRENCY_PAIR, PRICE_PROPERTIES.getDsxAccountType()).getBids();
+            orders = marketDataService.getOrderBook(currencyPair, PRICE_PROPERTIES.getDsxAccountType()).getBids();
             logInfo("DSX orderbook is empty, waiting for orderbook appearance");
             DSXUtils.sleep("Request to get orderbook interrupted");
         }
@@ -73,9 +74,9 @@ class Algorithm {
                 .findFirst().orElse(-1);
     }
 
-    private BigDecimal getPriceAfterOrder(Exchange exchange, BigDecimal price) throws IOException {
+    private BigDecimal getPriceAfterOrderDSX(BigDecimal price) throws IOException {
 
-        List<LimitOrder> orders = getBidOrders(exchange);
+        List<LimitOrder> orders = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
 
         BigDecimal priceAfterUserOrder = null;
 
@@ -88,10 +89,10 @@ class Algorithm {
         return priceAfterUserOrder;
     }
 
-    private BigDecimal getVolumeBeforeOrder(Exchange exchange, BigDecimal price) throws IOException {
+    private BigDecimal getVolumeBeforeOrderDSX(BigDecimal price) throws IOException {
         BigDecimal volume = BigDecimal.ZERO;
 
-        List<LimitOrder> orders = getBidOrders(exchange);
+        List<LimitOrder> orders = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
         for (LimitOrder order : orders) {
             if (order.getLimitPrice().compareTo(price) > 0) {
                 volume = volume.add(order.getRemainingAmount());
@@ -144,7 +145,7 @@ class Algorithm {
         PriceProperties priceConstants = args.getPriceProperties();
 
         Balance balance = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
-                getFunds(args.getDsxExchange()));
+                getFunds(args.getDsxExchange(), DSX_CURRENCY_PAIR.counter));
 
         logInfo("Account funds: {}", balance);
         //waiting for our price to be better than average price on supported exchanges
@@ -154,7 +155,7 @@ class Algorithm {
         BigDecimal dsxPriceWithAddition = args.getDsxPrice().add(priceConstants.getPriceAddition());
 
         BigDecimal volume = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
-                getFunds(args.getDsxExchange()).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
+                getFunds(args.getDsxExchange(), DSX_CURRENCY_PAIR.counter).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
                         RoundingMode.DOWN));
 
         // condition for not printing volume, when this is redundant
@@ -162,7 +163,7 @@ class Algorithm {
 
             cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
             volume = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
-                    getFunds(args.getDsxExchange()).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
+                    getFunds(args.getDsxExchange(), DSX_CURRENCY_PAIR.counter).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
                             RoundingMode.DOWN));
             logInfo("Cancelled all previous orders in case there was placed order");
             logInfo("Buying volume: {}", volume);
@@ -193,7 +194,7 @@ class Algorithm {
                 //place new order
                 BigDecimal finalVolume = volume;
                 String limitOrderReturnValue = DSXUtils.unlimitedRepeatableRequest("placeLimitOrder", () ->
-                        args.getTradeService().placeLimitOrder(new LimitOrder(Order.OrderType.BID, finalVolume, CURRENCY_PAIR,
+                        args.getTradeService().placeLimitOrder(new LimitOrder(Order.OrderType.BID, finalVolume, DSX_CURRENCY_PAIR,
                                 "", date, dsxPriceWithAddition)));
                 args.setOrderPrice(dsxPriceWithAddition);
                 logInfo("Order with id {} was placed", limitOrderReturnValue);
@@ -211,8 +212,8 @@ class Algorithm {
                         args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
                 printOrderStatus(result.getStatus());
 
-                BigDecimal priceBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
-                        getBidOrderHighestPriceDSX(args.getDsxExchange()));
+                BigDecimal priceBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX",
+                        this::getBidOrderHighestPriceDSX);
 
                 // Order status == Filled - algorithm executed correctly
                 if (result.getStatus() == 1) {
@@ -222,10 +223,10 @@ class Algorithm {
 
                 // if order status not filled - check that order is actual (top bid or so and price is good).
                 BigDecimal volumeBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
-                        getVolumeBeforeOrder(args.getDsxExchange(), result.getRate()));
+                        getVolumeBeforeOrderDSX(result.getRate()));
 
-                BigDecimal priceAfterOrder = DSXUtils.unlimitedRepeatableRequest("getPriceAfterOrder", () ->
-                        getPriceAfterOrder(args.getDsxExchange(), result.getRate()));
+                BigDecimal priceAfterOrder = DSXUtils.unlimitedRepeatableRequest("getPriceAfterOrderDSX", () ->
+                        getPriceAfterOrderDSX(result.getRate()));
 
                 // good means that difference between user's order price and order's price after is less than sensitivity
                 boolean isPriceAfterOrderGood = checkPriceAfterOrder(
@@ -274,12 +275,15 @@ class Algorithm {
                     priceProperties.getPriceScale()));
 
             //get DSX price
-            args.setDsxPrice(DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX", () ->
-                    getBidOrderHighestPriceDSX(args.getDsxExchange())));
+            args.setDsxPrice(DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX",
+                    this::getBidOrderHighestPriceDSX));
 
+            args.setFxRate(FixerUtils.getRate(DSX_CURRENCY_PAIR.counter.getCurrencyCode(),
+                    EXCHANGES_CURRENCY_PAIR.counter.getCurrencyCode()));
 
             if (args.getAveragePrice() != null) {
-                logInfo("Average price: {}, dsxPrice: {}", args.getAveragePrice(), args.getDsxPrice());
+                logInfo("Average price: {} ({}), dsxPrice: {} ({}), fiat exchange rate: {}",
+                        args.getAveragePrice(), EXCHANGES_CURRENCY_PAIR, args.getDsxPrice(), DSX_CURRENCY_PAIR, args.getFxRate());
                 //if DSX price is bad
                 if (isDSXPriceBad(priceProperties)) {
                     //if we have previously placed order - we should kill it or it can be filled by bad price.
@@ -307,11 +311,21 @@ class Algorithm {
     }
 
     private boolean isDSXPriceBad(PriceProperties priceProperties) {
-
         args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
                 priceProperties.getPriceScale()));
         BigDecimal averagePrice = args.getAveragePrice();
         BigDecimal dsxPrice = args.getDsxPrice();
-        return averagePrice == null || averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage())) < 0;
+
+        BigDecimal fxMultiplier = BigDecimal.ONE;
+        // if DSX currency is not equal to currency pair on other exchanges, get currency exchange rate and multiply it by currency exchange fee
+        if (!DSX_CURRENCY_PAIR.equals(EXCHANGES_CURRENCY_PAIR)) {
+            if (args.getFxRate() == null) {
+                logInfo(String.format("Unable to get exchange rate for currencies: %s/%s", DSX_CURRENCY_PAIR.counter, EXCHANGES_CURRENCY_PAIR.counter));
+                return true;
+            }
+            fxMultiplier = args.getFxRate().multiply(priceProperties.getFxPercentage());
+        }
+
+        return averagePrice == null || averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage().multiply(fxMultiplier))) < 0;
     }
 }
