@@ -4,6 +4,9 @@ DSX ATS example is using XChange library for communication with cryptocurrency e
 Bitstamp, Kraken, and compare it with DSX price. If it satisfies pre-defined conditions, then ATS places an order to buy BTC 
 on DSX. ATS moves active orders on price movements to garantee the best execution.
 
+ATS supports cross instrument trading (only for fiat currencies), in this case cross currency rate are received
+from [fixer.io](http://fixer.io) website.
+
 #### How to use ATS
 #### Ubuntu
 For using this ATS you can run sh scripts. 
@@ -24,12 +27,19 @@ Files config.json and rateLimit.json in ats-example are used for AtsMain class. 
 ats folder are used for AtsAlgoTest class, i.e. for testing purposes.
 #### Clarification of config.json
         "url" : dsx.uk api address. Can be changed, that's why it's in properties.
+        
         "secretKey": your account secret key,
     
         "apiKey": your account public key,
   
+        "exchangesCurrencyPair": Currency pair to check on other exchanges, e.g. "BTC/USD",
+        
+        "dsxCurrencyPair": Currency pair to trade on DSX, e.g. "BTC/EUR",
+  
         "pricePercentage": percentage, for which multiply dsx price bid order for condition checking. 
         For example - "1.01" will check if bid order average bigger than dsx bid order * 1.01,
+  
+        "fxPercentage": percentage, for which multiply fx rates. e.g. "1.01",
   
         "priceScale": number of decimals after dot for price, e.g. 5,
   
