@@ -62,9 +62,8 @@ public class DSXUtils {
                 } else if (e.getMessage() != null && e.getMessage().contains("Exceeded limit request per minute")) {
                     logError("Exceeded limit request per minute, waiting 1 minute");
                     sleepWithSeconds(String.format("%s interrupted", methodName), REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT);
-                }
-                else {
-                    logErrorWithException("Unknown exception: " + e, e);
+                } else {
+                    logError("Unknown exception: " + e);
                     throw e;
                 }
             }
