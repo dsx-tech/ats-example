@@ -56,15 +56,17 @@ public class DSXUtils {
                 logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
                 sleep(String.format("%s interrupted", methodName));
             } catch (Exception e) {
-                if (e.getMessage().contains("418")) {
+                if (e.getMessage() != null && e.getMessage().contains("418")) {
                     logErrorWithException("Cannot connect to dsx.uk, waiting 1 sec to try again", e);
                     sleep(String.format("%s interrupted", methodName));
-                } else if (e.getMessage().contains("Exceeded limit request per minute")) {
+                } else if (e.getMessage() != null && e.getMessage().contains("Exceeded limit request per minute")) {
                     logError("Exceeded limit request per minute, waiting 1 minute");
                     sleepWithSeconds(String.format("%s interrupted", methodName), REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT);
                 }
-                else
+                else {
+                    logErrorWithException("Unknown exception: " + e, e);
                     throw e;
+                }
             }
         }
         throw new InterruptedException(String.format("%s interrupted", methodName));
