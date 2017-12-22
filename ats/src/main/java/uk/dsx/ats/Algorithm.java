@@ -94,7 +94,7 @@ class Algorithm {
 
         List<LimitOrder> orders = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
         for (LimitOrder order : orders) {
-            if (order.getLimitPrice().compareTo(price) > 0) {
+            if ((order.getLimitPrice().compareTo(price) > 0) && (order.getRemainingAmount() != null)) {
                 volume = volume.add(order.getRemainingAmount());
             }
         }
@@ -326,6 +326,6 @@ class Algorithm {
             fxMultiplier = args.getFxRate().multiply(priceProperties.getFxPercentage());
         }
 
-        return averagePrice == null || averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage().multiply(fxMultiplier))) < 0;
+        return averagePrice == null || averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage()).multiply(fxMultiplier)) < 0;
     }
 }
