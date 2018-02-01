@@ -14,7 +14,6 @@ import org.knowm.xchange.service.marketdata.MarketDataService;
 import uk.dsx.ats.data.AlgorithmArgs;
 import uk.dsx.ats.data.PriceProperties;
 import uk.dsx.ats.utils.DSXUtils;
-import uk.dsx.ats.utils.FixerUtils;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -278,12 +277,16 @@ class Algorithm {
             args.setDsxPrice(DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX",
                     this::getBidOrderHighestPriceDSX));
 
-            args.setFxRate(FixerUtils.getRate(DSX_CURRENCY_PAIR.counter.getCurrencyCode(),
-                    EXCHANGES_CURRENCY_PAIR.counter.getCurrencyCode()));
 
             if (args.getAveragePrice() != null) {
-                logInfo("Average price: {} ({}), dsxPrice: {} ({}), fiat exchange rate: {}",
-                        args.getAveragePrice(), EXCHANGES_CURRENCY_PAIR, args.getDsxPrice(), DSX_CURRENCY_PAIR, args.getFxRate());
+                if (!DSX_CURRENCY_PAIR.equals(EXCHANGES_CURRENCY_PAIR))
+                    logInfo("Average price: {} ({}), dsxPrice: {} ({}), fiat exchange rate: {}",
+                            args.getAveragePrice().divide(args.getFxRate(), priceProperties.getPriceScale(), RoundingMode.DOWN),
+                            DSX_CURRENCY_PAIR, args.getDsxPrice(), DSX_CURRENCY_PAIR, args.getFxRate());
+                else
+                    logInfo("Average price: {} ({}), dsxPrice: {} ({})",
+                            args.getAveragePrice(), EXCHANGES_CURRENCY_PAIR, args.getDsxPrice(), DSX_CURRENCY_PAIR);
+
                 //if DSX price is bad
                 if (isDSXPriceBad(priceProperties)) {
                     //if we have previously placed order - we should kill it or it can be filled by bad price.

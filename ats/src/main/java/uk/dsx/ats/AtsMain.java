@@ -168,7 +168,7 @@ public class AtsMain {
                 TimeUnit.SECONDS.sleep(PRICE_PROPERTIES.getWaitingTimeForCheckingAccountFunds());
             }
         } catch (Exception e) {
-            logErrorWithException("Something bad happened, error message: {}", e);
+            logErrorWithException("Something bad happened, error message:", e);
         } finally {
             algorithm.cancelAllOrders(dsxTradeService);
             EXECUTOR_SERVICE.shutdown();

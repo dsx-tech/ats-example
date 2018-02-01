@@ -19,7 +19,7 @@ import javax.json.JsonObject;
 import javax.json.JsonReader;
 import javax.net.ssl.SSLHandshakeException;
 import java.io.*;
-import java.net.ConnectException;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.security.cert.CertificateException;
@@ -51,8 +51,8 @@ public class DSXUtils {
         while (!Thread.interrupted()) {
             try {
                 return requestObject.get();
-            } catch (ConnectException | UnknownHostException | SocketTimeoutException | HttpStatusIOException
-                    | NonceException | CertificateException | SSLHandshakeException e) {
+            } catch (UnknownHostException | SocketTimeoutException | HttpStatusIOException
+                    | NonceException | CertificateException | SSLHandshakeException | SocketException e) {
                 logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
                 sleep(String.format("%s interrupted", methodName));
             } catch (Exception e) {
