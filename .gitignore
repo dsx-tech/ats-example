@@ -14,7 +14,8 @@
 
 # Package Files #
 *.jar
-!bitbrocker/libs/*.jar
+!ats-example/libs/*.jar
+!ats-1.0-SNAPSHOT.jar
 *.war
 *.ear
 *.zip
