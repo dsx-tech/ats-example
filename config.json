@@ -19,6 +19,7 @@
     "volumeToMove": "0.05",
     "waitingTimeForOrderCheck": "5",
     "waitingTimeForCheckingAccountFunds": 10,
-    "sensitivity": 5
+    "sensitivity": 5,
+    "pmax": "20000"
   }
 }

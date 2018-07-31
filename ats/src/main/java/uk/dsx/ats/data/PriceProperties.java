@@ -28,6 +28,7 @@ public class PriceProperties {
     public static final String DEFAULT_ACCOUNT_TYPE = "LIVE";
     public static final int DEFAULT_NEW_ORDER_TIME = 300;
     public static final BigDecimal DEFAULT_SENSITIVITY = new BigDecimal("5");
+    public static final BigDecimal DEFAULT_MAX_PRICE = new BigDecimal("20000");
 
     String dsxCurrencyPair = DEFAULT_DSX_CURRENCY_PAIR;
     String exchangesCurrencyPair = DEFAULT_EXCHANGES_CURRENCY_PAIR;
@@ -44,4 +45,5 @@ public class PriceProperties {
     long waitingTimeForOrderCheck = DEFAULT_WAITING_TIME_FOR_ORDER_CHECK;
     long waitingTimeForCheckingAccountFunds = DEFAULT_NEW_ORDER_TIME;
     BigDecimal sensitivity = DEFAULT_SENSITIVITY;
+    BigDecimal maxPrice = DEFAULT_MAX_PRICE;
 }

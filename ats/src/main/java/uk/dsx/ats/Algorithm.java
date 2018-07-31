@@ -189,7 +189,7 @@ class Algorithm {
                     return true;
                 }
             }
-            if (args.getLimitOrderReturnValue() == null) {
+            if (args.getLimitOrderReturnValue() == null && dsxPriceWithAddition.compareTo(args.getPriceProperties().getMaxPrice()) < 0) {
                 //place new order
                 BigDecimal finalVolume = volume;
                 String limitOrderReturnValue = DSXUtils.unlimitedRepeatableRequest("placeLimitOrder", () ->

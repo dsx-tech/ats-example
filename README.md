@@ -66,7 +66,8 @@ ats folder are used for AtsAlgoTest class, i.e. for testing purposes.
         
         "sensitivity": if difference betwenn price for order after user's order and user's order is bigger than that amount
          then replace order with updated price, e.g. - 5 (5 usd)
-    
+         
+        "pmax": max price. If price is bid on dsx.uk is bigger than max price, then don't place order        
 #### Clarification of rateLimit.json
         
         "Exchange" - time in seconds to set how often price from exchange should be taken
