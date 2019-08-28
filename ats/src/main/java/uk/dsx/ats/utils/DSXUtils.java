@@ -36,11 +36,11 @@ public class DSXUtils {
 
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT = 60;
+    private final static Config CONFIG = DSXUtils.getPropertiesFromConfig(CONFIG_FILE);
 
-    private static Config CONFIG = DSXUtils.getPropertiesFromConfig(CONFIG_FILE);
-    public static PriceProperties PRICE_PROPERTIES = CONFIG.getPriceProperties();
-    public static CurrencyPair DSX_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getDsxCurrencyPair());
-    public static CurrencyPair EXCHANGES_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getExchangesCurrencyPair());
+    public final static PriceProperties PRICE_PROPERTIES = CONFIG.getPriceProperties();
+    public final static CurrencyPair DSX_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getDsxCurrencyPair());
+    public final static CurrencyPair EXCHANGES_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getExchangesCurrencyPair());
 
     @FunctionalInterface
     public interface ConnectorRequest<T> {

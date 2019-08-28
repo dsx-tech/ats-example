@@ -2,6 +2,7 @@ group 'uk.dsx'
 version '1.0-SNAPSHOT'
 
 apply plugin: 'java'
+apply plugin: 'application'
 
 sourceCompatibility = 1.8
 
@@ -44,3 +45,5 @@ dependencies {
     compile "org.apache.logging.log4j:log4j-api:2.7"
     compile "org.apache.logging.log4j:log4j-core:2.7"
 }
+
+mainClassName = 'uk.dsx.ats.AtsMain'
