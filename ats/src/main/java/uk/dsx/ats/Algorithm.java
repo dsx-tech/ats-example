@@ -8,20 +8,24 @@ import org.knowm.xchange.dsx.dto.trade.DSXOrderStatusResult;
 import org.knowm.xchange.dsx.service.DSXTradeService;
 import org.knowm.xchange.dto.Order;
 import org.knowm.xchange.dto.account.Balance;
+import org.knowm.xchange.dto.marketdata.OrderBook;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import org.knowm.xchange.exceptions.ExchangeException;
 import org.knowm.xchange.service.marketdata.MarketDataService;
 import uk.dsx.ats.data.AlgorithmArgs;
 import uk.dsx.ats.data.PriceProperties;
 import uk.dsx.ats.utils.DSXUtils;
+import uk.dsx.ats.utils.MarketDataRepository;
+import uk.dsx.ats.utils.OrderBookHelper;
+import uk.dsx.ats.utils.TradeRepository;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
 
 import static uk.dsx.ats.AtsMain.*;
 import static uk.dsx.ats.utils.DSXUtils.*;
@@ -35,16 +39,33 @@ class Algorithm {
 
     private static final BigDecimal LOW_VOLUME = new BigDecimal("0.1");
 
+    interface CancelOrderPolicy {
+        boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook);
+    }
+
     AlgorithmArgs args;
     Logger logInfo;
     Logger logAudit;
     Date date;
+
+    private final MarketDataRepository marketDataRepository;
+    private final TradeRepository tradeRepository;
+    private final List<CancelOrderPolicy> cancelOrderPolicies;
 
     Algorithm(AlgorithmArgs args, Logger logInfo, Logger logAudit, Date date) {
         this.args = args;
         this.logInfo = logInfo;
         this.logAudit = logAudit;
         this.date = date;
+
+        this.marketDataRepository = new MarketDataRepository(args.getDsxExchange(), DSX_CURRENCY_PAIR);
+        this.tradeRepository = new TradeRepository((DSXTradeService) args.getDsxTradeServiceRaw());
+
+        this.cancelOrderPolicies = Arrays.asList(
+                new StepToMove(args.getPriceProperties().getStepToMove()),
+                new VolumeToMove(args.getPriceProperties().getVolumeToMove()),
+                new Sensitivity(args.getPriceProperties().getSensitivity())
+        );
     }
 
     private BigDecimal getBidOrderHighestPriceDSX() throws IOException {
@@ -64,40 +85,6 @@ class Algorithm {
         }
 
         return orders;
-    }
-
-    private int getOrderIndex(BigDecimal price, List<LimitOrder> orders) {
-
-        return IntStream.range(0, orders.size())
-                .filter(i -> orders.get(i).getLimitPrice().compareTo(price) == 0)
-                .findFirst().orElse(-1);
-    }
-
-    private BigDecimal getPriceAfterOrderDSX(BigDecimal price) throws IOException {
-
-        List<LimitOrder> orders = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
-
-        BigDecimal priceAfterUserOrder = null;
-
-        int orderIndex = getOrderIndex(price, orders);
-
-        // take order price after user's order
-        if (orders.size() - 1 > orderIndex)
-            priceAfterUserOrder = orders.get(orderIndex + 1).getLimitPrice();
-
-        return priceAfterUserOrder;
-    }
-
-    private BigDecimal getVolumeBeforeOrderDSX(BigDecimal price) throws IOException {
-        BigDecimal volume = BigDecimal.ZERO;
-
-        List<LimitOrder> orders = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
-        for (LimitOrder order : orders) {
-            if ((order.getLimitPrice().compareTo(price) > 0) && (order.getRemainingAmount() != null)) {
-                volume = volume.add(order.getRemainingAmount());
-            }
-        }
-        return volume;
     }
 
     void cancelAllOrders(DSXTradeService tradeService) throws Exception {
@@ -126,18 +113,6 @@ class Algorithm {
                 logInfo("Actual order status: {}", orderStatus);
                 break;
         }
-    }
-
-    private boolean checkPriceBeforeOrder(BigDecimal orderPrice, BigDecimal priceBeforeOrder, BigDecimal stepToMove) {
-        return priceBeforeOrder != null && orderPrice.subtract(priceBeforeOrder).abs().compareTo(stepToMove) > 0;
-    }
-
-    private boolean checkPriceAfterOrder(BigDecimal priceAfterOrder, BigDecimal rate, BigDecimal sensitivity) {
-        return priceAfterOrder != null && rate.subtract(priceAfterOrder).compareTo(sensitivity) > 0;
-    }
-
-    private boolean checkVolumeBeforeOrder(BigDecimal volumeBeforeOrder, BigDecimal volumeToMove) {
-        return volumeBeforeOrder.compareTo(volumeToMove) >= 0;
     }
 
     boolean executeAlgorithm() throws Exception {
@@ -207,56 +182,17 @@ class Algorithm {
 
             //get actual order status
             if (args.getOrderId() != 0L) {
-                DSXOrderStatusResult result = DSXUtils.unlimitedRepeatableRequest("getOrderStatus", () ->
-                        args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
-                printOrderStatus(result.getStatus());
+                DSXOrderStatusResult order = tradeRepository.getOrderStatus(args.getOrderId());
 
-                BigDecimal priceBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX",
-                        this::getBidOrderHighestPriceDSX);
+                printOrderStatus(order.getStatus());
 
                 // Order status == Filled - algorithm executed correctly
-                if (result.getStatus() == 1) {
+                if (order.getStatus() == 1) {
                     logInfo("Order was filled");
                     return true;
                 }
 
-                // if order status not filled - check that order is actual (top bid or so and price is good).
-                BigDecimal volumeBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
-                        getVolumeBeforeOrderDSX(result.getRate()));
-
-                BigDecimal priceAfterOrder = DSXUtils.unlimitedRepeatableRequest("getPriceAfterOrderDSX", () ->
-                        getPriceAfterOrderDSX(result.getRate()));
-
-                // good means that difference between user's order price and order's price after is less than sensitivity
-                boolean isPriceAfterOrderGood = checkPriceAfterOrder(
-                        priceAfterOrder,
-                        result.getRate(),
-                        priceConstants.getSensitivity());
-
-                // good means that difference between user's order price and order's price before is less than step to move
-                boolean isPriceBeforeOrderGood = checkPriceBeforeOrder(
-                        result.getRate(),
-                        priceBeforeOrder,
-                        priceConstants.getStepToMove());
-
-                boolean isVolumeGood = checkVolumeBeforeOrder(volumeBeforeOrder, priceConstants.getVolumeToMove());
-
-                if (isPriceBeforeOrderGood || isVolumeGood || isPriceAfterOrderGood) {
-                    //if price is good and order needs to be replaced (with better price). check order status again
-                    int orderStatus = DSXUtils.unlimitedRepeatableRequest("getOrderStatus", () ->
-                            args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
-
-                    printOrderStatus(orderStatus);
-                    // if order status is not filled or killed, then cancel order so we can place another order
-                    if (orderStatus != 1 && orderStatus != 2) {
-                        DSXUtils.unlimitedRepeatableRequest("cancelOrder", () ->
-                                args.getTradeService().cancelOrder(args.getLimitOrderReturnValue()));
-                        logInfo("Cancelling order, because better price exists");
-                        args.setOrderId(0L);
-                        args.setAveragePrice(null);
-                    }
-                    args.setLimitOrderReturnValue(null);
-                }
+                cancelOrderIfNeeded(order);
             }
         } catch (ExchangeException e) {
             logErrorWithException("Exchange exception: {}", e);
@@ -264,6 +200,24 @@ class Algorithm {
         return false;
     }
 
+    private void cancelOrderIfNeeded(DSXOrderStatusResult order) throws Exception {
+        OrderBook orderBook = marketDataRepository.getOrderBook();
+
+        if (cancelOrderPolicies.stream().noneMatch(policy -> policy.shouldCancelOrder(order, orderBook))) {
+            return;
+        }
+
+        int status = tradeRepository.getOrderStatus(args.getOrderId()).getStatus();
+
+        if (status != 1 && status != 2) {
+            logInfo("Cancelling order, because better price exists");
+            tradeRepository.cancelOrder(args.getLimitOrderReturnValue());
+            args.setOrderId(0L);
+            args.setAveragePrice(null);
+        }
+
+        args.setLimitOrderReturnValue(null);
+    }
 
     private void awaitGoodPrice() throws Exception {
         PriceProperties priceProperties = args.getPriceProperties();
@@ -330,5 +284,104 @@ class Algorithm {
         }
 
         return averagePrice == null || averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage()).multiply(fxMultiplier)) < 0;
+    }
+
+    static class VolumeToMove implements CancelOrderPolicy {
+
+        private final BigDecimal maxVolumeAbove;
+
+        VolumeToMove(BigDecimal maxVolumeAbove) {
+            this.maxVolumeAbove = maxVolumeAbove;
+        }
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            DSXUtils.logInfo("StepToMove checking");
+
+            OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
+            BigDecimal bidVolumeAbove = orderBookHelper.bidVolumeAbove(order.getRate());
+
+            if (bidVolumeAbove == null) {
+                DSXUtils.logInfo("\tBids above are null");
+                return false;
+            }
+
+            DSXUtils.logInfo("\tBid volume above order = {}; Maximum volume above = {}",
+                    bidVolumeAbove, maxVolumeAbove);
+
+            return bidVolumeAbove.compareTo(maxVolumeAbove) > 0;
+        }
+
+//        private boolean checkVolumeBeforeOrder(BigDecimal volumeBeforeOrder, BigDecimal volumeToMove) {
+//            return volumeBeforeOrder.compareTo(volumeToMove) >= 0;
+//        }
+    }
+
+    static class StepToMove implements CancelOrderPolicy {
+
+        private final BigDecimal maxDistanceToBestBid;
+
+        StepToMove(BigDecimal maxDistanceToBestBid) {
+            this.maxDistanceToBestBid = maxDistanceToBestBid;
+        }
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            DSXUtils.logInfo("StepToMove checking");
+
+            OrderBookHelper bookHelper = new OrderBookHelper(orderBook);
+            BigDecimal bestBid = bookHelper.bestBidPrice();
+
+            if (bestBid == null) {
+                DSXUtils.logInfo("\tBest bid is null");
+                return false;
+            }
+
+            BigDecimal distanceToBestBid = bestBid.subtract(order.getRate());
+
+            DSXUtils.logInfo("\tBest bid price = {}; Distance to best bid = {}; Maximum distance = {}",
+                    bestBid, distanceToBestBid, maxDistanceToBestBid);
+
+            return distanceToBestBid.compareTo(maxDistanceToBestBid) > 0;
+        }
+
+        // good means that difference between user's order price and order's price before is less than step to move
+//        private boolean checkPriceBeforeOrder(BigDecimal orderPrice, BigDecimal priceBeforeOrder, BigDecimal stepToMove) {
+//            return priceBeforeOrder != null && orderPrice.subtract(priceBeforeOrder).abs().compareTo(stepToMove) > 0;
+//        }
+    }
+
+    static class Sensitivity implements CancelOrderPolicy {
+
+        private final BigDecimal maxDistanceToNextOrder;
+
+        Sensitivity(BigDecimal maxDistanceToNextOrder) {
+            this.maxDistanceToNextOrder = maxDistanceToNextOrder;
+        }
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            DSXUtils.logInfo("Sensitivity checking");
+
+            OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
+            BigDecimal nextBidPrice = orderBookHelper.getBidPriceAfter(order.getRate());
+
+            if (nextBidPrice == null) {
+                DSXUtils.logInfo("\tThere is no any bid after order");
+                return false;
+            }
+
+            BigDecimal distanceToNextOrder = order.getRate().subtract(nextBidPrice);
+
+            DSXUtils.logInfo("\tNext bid price = {0}; Distance to next bid = {1}; Maximum distance = {2}",
+                    nextBidPrice, distanceToNextOrder, maxDistanceToNextOrder);
+
+            return distanceToNextOrder.compareTo(maxDistanceToNextOrder) > 0;
+        }
+
+//        good means that difference between user's order price and order's price after is less than sensitivity
+//        private boolean checkPriceAfterOrder(BigDecimal priceAfterOrder, BigDecimal rate, BigDecimal sensitivity) {
+//            return priceAfterOrder != null && rate.subtract(priceAfterOrder).compareTo(sensitivity) > 0;
+//        }
     }
 }
