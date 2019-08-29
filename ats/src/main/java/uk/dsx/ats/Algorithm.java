@@ -51,9 +51,11 @@ class Algorithm {
         this.priceProperties = priceProperties;
 
         this.cancelOrderPolicies = Arrays.asList(
+                new SingleBidRow(),
                 new StepToMove(priceProperties.getStepToMove()),
                 new VolumeToMove(priceProperties.getVolumeToMove()),
-                new Sensitivity(priceProperties.getSensitivity())
+                new Sensitivity(priceProperties.getSensitivity()),
+                new PriceHasBeenChanged()
         );
         this.averagePriceRepository = averagePriceRepository;
     }
@@ -64,7 +66,7 @@ class Algorithm {
         logInfo("Account funds: {}", accountRepository.getBalance());
 
         //waiting for our price to be better than average price on supported exchanges
-        BigDecimal bestBidPrice = new PlaceOrderMonitor().awaitAcceptablePrice();
+        BigDecimal bestBidPrice = new PriceMonitor().awaitAcceptablePrice();
 
         //calculating data for placing order on our exchange
         BigDecimal orderPrice = bestBidPrice.add(priceProperties.getPriceAddition());
@@ -96,14 +98,22 @@ class Algorithm {
 
     private void logOrderStatus(int orderStatus) {
         switch (orderStatus) {
-            case 0:     logInfo("Actual order status: Active"); break;
-            case 1:     logInfo("Actual order status: Filled"); break;
-            case 2:     logInfo("Actual order status: Killed"); break;
-            default:    logInfo("Actual order status: {}", orderStatus); break;
+            case 0:
+                logInfo("Actual order status: Active");
+                break;
+            case 1:
+                logInfo("Actual order status: Filled");
+                break;
+            case 2:
+                logInfo("Actual order status: Killed");
+                break;
+            default:
+                logInfo("Actual order status: {}", orderStatus);
+                break;
         }
     }
 
-    private BigDecimal getExchangeRate(CurrencyPair tradePair, CurrencyPair indicativePair) {
+    private BigDecimal getExchangeRate(CurrencyPair tradePair, CurrencyPair indicativePair) throws Exception {
         if (tradePair.equals(indicativePair)) {
             return BigDecimal.ONE;
         }
@@ -118,7 +128,7 @@ class Algorithm {
         }
     }
 
-    class PlaceOrderMonitor {
+    class PriceMonitor {
 
         BigDecimal awaitAcceptablePrice() throws Exception {
             while (true) {
@@ -133,7 +143,7 @@ class Algorithm {
             }
         }
 
-        private boolean isPriceAcceptable(BigDecimal bestBid, BigDecimal averagePrice) {
+        boolean isPriceAcceptable(BigDecimal bestBid, BigDecimal averagePrice) throws Exception {
             if (averagePrice == null) return false;
 
             BigDecimal exchangeRate = getExchangeRate(DSX_CURRENCY_PAIR, EXCHANGES_CURRENCY_PAIR);
@@ -141,7 +151,10 @@ class Algorithm {
             if (exchangeRate == null) {
                 return false;
             } else {
-                return bestBid.multiply(priceProperties.getPricePercentage().multiply(exchangeRate)).compareTo(averagePrice) <= 0;
+                BigDecimal bidWithOffset = priceProperties.getPricePercentage().multiply(exchangeRate);
+                logInfo("Average price = {}; Relative offset = {}; Best bid = {} ({})",
+                        averagePrice, priceProperties.getPricePercentage(), exchangeRate, bidWithOffset);
+                return bestBid.multiply(bidWithOffset).compareTo(averagePrice) <= 0;
             }
         }
     }
@@ -184,6 +197,44 @@ class Algorithm {
         }
     }
 
+    /**
+     * The order has to be cancelled if: there is no any other orders (by different prices)
+     */
+    static class SingleBidRow implements CancelOrderPolicy {
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            return orderBook.getBids().size() < 2;
+        }
+    }
+
+    /**
+     * The order has to be cancelled if initial conditions are broken
+     */
+    class PriceHasBeenChanged implements CancelOrderPolicy {
+
+        private final PriceMonitor priceMonitor;
+
+        PriceHasBeenChanged() {
+            priceMonitor = new PriceMonitor();
+        }
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
+            try {
+                BigDecimal averagePrice = averagePriceRepository.getAveragePrice();
+                return !priceMonitor.isPriceAcceptable(orderBookHelper.bestBidPrice(), averagePrice);
+            } catch (Exception e) {
+                logError("Impossible to check average price: {}", e);
+                return false;
+            }
+        }
+    }
+
+    /**
+     * The order has to be cancelled if: sum(betterBidOrders.volume) > volumeToMove
+     */
     static class VolumeToMove implements CancelOrderPolicy {
 
         private final BigDecimal maxVolumeAbove;
@@ -194,23 +245,26 @@ class Algorithm {
 
         @Override
         public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
-            DSXUtils.logInfo("StepToMove checking");
+            logInfo("StepToMove checking");
 
             OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
             BigDecimal bidVolumeAbove = orderBookHelper.bidVolumeAbove(order.getRate());
 
             if (bidVolumeAbove == null) {
-                DSXUtils.logInfo("\tBids above are null");
+                logInfo("\tBids above are null");
                 return false;
             }
 
-            DSXUtils.logInfo("\tBid volume above order = {}; Maximum volume above = {}",
+            logInfo("\tBid volume above order = {}; Maximum volume above = {}",
                     bidVolumeAbove, maxVolumeAbove);
 
             return bidVolumeAbove.compareTo(maxVolumeAbove) >= 0;
         }
     }
 
+    /**
+     * The order has to be cancelled if:  bestBidOrder.price - ourOrder.price > stepToMove
+     */
     static class StepToMove implements CancelOrderPolicy {
 
         private final BigDecimal maxDistanceToBestBid;
@@ -221,25 +275,28 @@ class Algorithm {
 
         @Override
         public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
-            DSXUtils.logInfo("StepToMove checking");
+            logInfo("StepToMove checking");
 
             OrderBookHelper bookHelper = new OrderBookHelper(orderBook);
             BigDecimal bestBid = bookHelper.bestBidPrice();
 
             if (bestBid == null) {
-                DSXUtils.logInfo("\tBest bid is null");
+                logInfo("\tBest bid is null");
                 return false;
             }
 
             BigDecimal distanceToBestBid = bestBid.subtract(order.getRate());
 
-            DSXUtils.logInfo("\tBest bid price = {}; Distance to best bid = {}; Maximum distance = {}",
+            logInfo("\tBest bid price = {}; Distance to best bid = {}; Maximum distance = {}",
                     bestBid, distanceToBestBid, maxDistanceToBestBid);
 
             return distanceToBestBid.compareTo(maxDistanceToBestBid) > 0;
         }
     }
 
+    /**
+     * The order has to be cancelled if:  ourOrder.price - nextBidOrder.price > sensitivity
+     */
     static class Sensitivity implements CancelOrderPolicy {
 
         private final BigDecimal maxDistanceToNextOrder;
@@ -250,19 +307,19 @@ class Algorithm {
 
         @Override
         public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
-            DSXUtils.logInfo("Sensitivity checking");
+            logInfo("Sensitivity checking");
 
             OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
             BigDecimal nextBidPrice = orderBookHelper.getBidPriceAfter(order.getRate());
 
             if (nextBidPrice == null) {
-                DSXUtils.logInfo("\tThere is no any bid after order");
+                logInfo("\tThere is no any bid after order");
                 return false;
             }
 
             BigDecimal distanceToNextOrder = order.getRate().subtract(nextBidPrice);
 
-            DSXUtils.logInfo("\tNext bid price = {0}; Distance to next bid = {1}; Maximum distance = {2}",
+            logInfo("\tNext bid price = {0}; Distance to next bid = {1}; Maximum distance = {2}",
                     nextBidPrice, distanceToNextOrder, maxDistanceToNextOrder);
 
             return distanceToNextOrder.compareTo(maxDistanceToNextOrder) > 0;
