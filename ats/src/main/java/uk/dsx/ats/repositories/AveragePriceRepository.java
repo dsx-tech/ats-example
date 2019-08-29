@@ -1,6 +1,7 @@
 package uk.dsx.ats.repositories;
 
 import org.knowm.xchange.Exchange;
+import org.knowm.xchange.ExchangeFactory;
 import org.knowm.xchange.currency.CurrencyPair;
 import org.knowm.xchange.dto.trade.LimitOrder;
 import uk.dsx.ats.AtsMain;
@@ -19,7 +20,10 @@ public class AveragePriceRepository {
     private final int scale;
 
     public AveragePriceRepository(List<Exchange> exchanges, CurrencyPair pair, int scale) {
-        this.exchanges = exchanges.stream().map(ExchangeWrapper::new).collect(Collectors.toList());
+        this.exchanges = exchanges.stream()
+                .map(this::initializeExchange)
+                .map(ExchangeWrapper::new)
+                .collect(Collectors.toList());
         this.pair = pair;
         this.scale = scale;
     }
@@ -49,6 +53,10 @@ public class AveragePriceRepository {
         } else {
             return sum.divide(count, scale, RoundingMode.DOWN);
         }
+    }
+
+    private Exchange initializeExchange(Exchange prototype) {
+        return ExchangeFactory.INSTANCE.createExchange(prototype.getClass().getName());
     }
 
     static class ExchangeWrapper {

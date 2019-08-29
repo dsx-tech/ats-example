@@ -31,9 +31,6 @@ public class AtsMain {
 
     public static final String RATE_LIMIT_CONFIG = "rateLimit.json";
 
-    private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
-    private static final int REQUEST_TO_FIXER_DELAY_SECONDS = 60;
-
     public static void main(String[] args) throws Exception {
         Algorithm algorithm;
 

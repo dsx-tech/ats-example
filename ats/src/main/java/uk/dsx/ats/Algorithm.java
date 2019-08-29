@@ -121,17 +121,21 @@ class Algorithm {
         BigDecimal exchangeRate = marketDataRepository.getExchangeRate(tradePair, indicativePair);
 
         if (exchangeRate == null) {
-            logInfo(String.format("Unable to get exchange rate for currencies: %s/%s", DSX_CURRENCY_PAIR.counter, EXCHANGES_CURRENCY_PAIR.counter));
+            logInfo(String.format("\t Unable to get exchange rate for currencies: %s/%s", DSX_CURRENCY_PAIR.counter, EXCHANGES_CURRENCY_PAIR.counter));
             return null;
         } else {
             return exchangeRate.multiply(priceProperties.getFxPercentage());
         }
     }
 
+    /**
+     * Check if averagePrice > dsx.bestBid * pricePercentage * exchangeRate
+     */
     class PriceMonitor {
 
         BigDecimal awaitAcceptablePrice() throws Exception {
             while (true) {
+                logInfo("• Average price is checking");
                 BigDecimal bestBidPrice = new OrderBookHelper(marketDataRepository.getOrderBook()).bestBidPrice();
                 BigDecimal averagePrice = averagePriceRepository.getAveragePrice();
 
@@ -144,17 +148,25 @@ class Algorithm {
         }
 
         boolean isPriceAcceptable(BigDecimal bestBid, BigDecimal averagePrice) throws Exception {
-            if (averagePrice == null) return false;
+            if (averagePrice == null) {
+                logInfo("\t Cant calculate average price");
+                return false;
+            }
+
+            if (bestBid == null) {
+                logInfo("\t Low DSX liquidity");
+                return false;
+            }
 
             BigDecimal exchangeRate = getExchangeRate(DSX_CURRENCY_PAIR, EXCHANGES_CURRENCY_PAIR);
 
             if (exchangeRate == null) {
                 return false;
             } else {
-                BigDecimal bidWithOffset = priceProperties.getPricePercentage().multiply(exchangeRate);
-                logInfo("Average price = {}; Relative offset = {}; Best bid = {} ({})",
-                        averagePrice, priceProperties.getPricePercentage(), exchangeRate, bidWithOffset);
-                return bestBid.multiply(bidWithOffset).compareTo(averagePrice) <= 0;
+                BigDecimal bidWithOffset = bestBid.multiply(priceProperties.getPricePercentage()).multiply(exchangeRate);
+                logInfo("\t Average price = {}; Relative offset = {}; Best bid = {} (multiplied = {})",
+                        averagePrice, priceProperties.getPricePercentage(), bestBid, bidWithOffset);
+                return averagePrice.compareTo(bidWithOffset) > 0;
             }
         }
     }
@@ -169,8 +181,11 @@ class Algorithm {
 
         OrderCheckingResult awaitStateChanged() throws Exception {
             while (true) {
+                logInfo("");
+                logInfo("================ Checking order state");
                 OrderCheckingResult result = checkOrder();
                 if (result == OrderCheckingResult.ACCEPTABLE_ORDER_PRICE) {
+                    logInfo("All conditions are good.");
                     TimeUnit.SECONDS.sleep(priceProperties.getWaitingTimeForOrderCheck());
                 } else {
                     return result;
@@ -187,6 +202,8 @@ class Algorithm {
             if (order.getStatus() == 1) {
                 logInfo("Order was filled");
                 return OrderCheckingResult.ORDER_FILLED;
+            } else{
+                logInfo("Price = {}; Volume = {}/{}",order.getRate(), order.getRemainingVolume(), order.getVolume());
             }
 
             OrderBook orderBook = marketDataRepository.getOrderBook();
@@ -221,12 +238,13 @@ class Algorithm {
 
         @Override
         public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            logInfo("• Average price is checking");
             OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
             try {
                 BigDecimal averagePrice = averagePriceRepository.getAveragePrice();
                 return !priceMonitor.isPriceAcceptable(orderBookHelper.bestBidPrice(), averagePrice);
             } catch (Exception e) {
-                logError("Impossible to check average price: {}", e);
+                logError("\t Impossible to check average price: {}", e);
                 return false;
             }
         }
@@ -245,17 +263,17 @@ class Algorithm {
 
         @Override
         public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
-            logInfo("StepToMove checking");
+            logInfo("• VolumeToMove checking");
 
             OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
             BigDecimal bidVolumeAbove = orderBookHelper.bidVolumeAbove(order.getRate());
 
             if (bidVolumeAbove == null) {
-                logInfo("\tBids above are null");
+                logInfo("\t Bids above are null");
                 return false;
             }
 
-            logInfo("\tBid volume above order = {}; Maximum volume above = {}",
+            logInfo("\t Bid volume above order = {}; Maximum volume above = {}",
                     bidVolumeAbove, maxVolumeAbove);
 
             return bidVolumeAbove.compareTo(maxVolumeAbove) >= 0;
@@ -275,19 +293,19 @@ class Algorithm {
 
         @Override
         public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
-            logInfo("StepToMove checking");
+            logInfo("• StepToMove checking");
 
             OrderBookHelper bookHelper = new OrderBookHelper(orderBook);
             BigDecimal bestBid = bookHelper.bestBidPrice();
 
             if (bestBid == null) {
-                logInfo("\tBest bid is null");
+                logInfo("\t Best bid is null");
                 return false;
             }
 
             BigDecimal distanceToBestBid = bestBid.subtract(order.getRate());
 
-            logInfo("\tBest bid price = {}; Distance to best bid = {}; Maximum distance = {}",
+            logInfo("\t Best bid price = {}; Distance to best bid = {}; Maximum distance = {}",
                     bestBid, distanceToBestBid, maxDistanceToBestBid);
 
             return distanceToBestBid.compareTo(maxDistanceToBestBid) > 0;
@@ -307,19 +325,19 @@ class Algorithm {
 
         @Override
         public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
-            logInfo("Sensitivity checking");
+            logInfo("• Sensitivity checking");
 
             OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
             BigDecimal nextBidPrice = orderBookHelper.getBidPriceAfter(order.getRate());
 
             if (nextBidPrice == null) {
-                logInfo("\tThere is no any bid after order");
+                logInfo("\t There is no any bid after order");
                 return false;
             }
 
             BigDecimal distanceToNextOrder = order.getRate().subtract(nextBidPrice);
 
-            logInfo("\tNext bid price = {0}; Distance to next bid = {1}; Maximum distance = {2}",
+            logInfo("\t Next bid price = {}; Distance to next bid = {}; Maximum distance = {}",
                     nextBidPrice, distanceToNextOrder, maxDistanceToNextOrder);
 
             return distanceToNextOrder.compareTo(maxDistanceToNextOrder) > 0;
