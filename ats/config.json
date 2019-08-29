@@ -5,7 +5,8 @@
     "apiKey": "604f366b-11eb-4a7b-ac2e-caa9e5fbfdca"
   },
   "PriceConfig": {
-    "currencyPair": "BTC/EUR",
+    "dsxCurrencyPair": "BTC/EUR",
+    "exchangesCurrencyPair": "BTC/USD",
     "pricePercentage": "1.01",
     "priceScale": 5,
     "volumeScale": 4,
@@ -15,9 +16,9 @@
     "dsxAccountType": "DEMO",
     "stepToMove": "0.1",
     "volumeToMove": "0.05",
+    "sensitivity": "5",
     "waitingTimeForOrderCheck": "5",
     "waitingTimeForCheckingAccountFunds": 10,
-    "sensitivity": 5,
     "pmax": "20000"
   }
 }
