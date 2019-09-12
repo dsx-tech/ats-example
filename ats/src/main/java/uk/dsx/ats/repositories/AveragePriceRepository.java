@@ -30,7 +30,7 @@ public class AveragePriceRepository {
 
     public BigDecimal getAveragePrice() throws Exception {
         BigDecimal sum = BigDecimal.ZERO;
-        BigDecimal count = new BigDecimal(exchanges.size());
+        BigDecimal count = BigDecimal.ZERO;
 
         for (ExchangeWrapper exchange : exchanges) {
             if (exchange.getNeedUpdate()) {
