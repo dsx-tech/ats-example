@@ -41,7 +41,7 @@ public class OrderBookHelper {
 
      public BigDecimal bidVolumeAbove(BigDecimal price) {
         return bidOrdersAbove(price).stream()
-                .map(LimitOrder::getRemainingAmount)
+                .map(LimitOrder::getOriginalAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
