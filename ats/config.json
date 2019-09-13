@@ -5,6 +5,7 @@
     "apiKey": "604f366b-11eb-4a7b-ac2e-caa9e5fbfdca"
   },
   "PriceConfig": {
+    "minOrderSize": "0.001",
     "dsxCurrencyPair": "BTC/EUR",
     "exchangesCurrencyPair": "BTC/USD",
     "pricePercentage": "1.01",

@@ -37,6 +37,7 @@ public class DSXUtils {
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT = 60;
     private final static Config CONFIG = DSXUtils.getPropertiesFromConfig(CONFIG_FILE);
+    private final static ExchangeProperties properties = CONFIG.getExchangeProperties();
 
     public final static PriceProperties PRICE_PROPERTIES = CONFIG.getPriceProperties();
     public final static CurrencyPair DSX_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getDsxCurrencyPair());
@@ -48,16 +49,17 @@ public class DSXUtils {
     }
 
     public static <T> T unlimitedRepeatableRequest(String methodName, ConnectorRequest<T> requestObject) throws Exception {
+
         while (!Thread.interrupted()) {
             try {
                 return requestObject.get();
             } catch (UnknownHostException | SocketTimeoutException | HttpStatusIOException
                     | NonceException | CertificateException | SSLHandshakeException | SocketException e) {
-                logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
+                logError("Connection to " + properties.getUrl() + " disappeared, waiting 1 sec to try again", e.getMessage());
                 sleep(String.format("%s interrupted", methodName));
             } catch (Exception e) {
                 if (e.getMessage() != null && e.getMessage().contains("418")) {
-                    logErrorWithException("Cannot connect to dsx.uk, waiting 1 sec to try again", e);
+                    logErrorWithException("Cannot connect to" + properties.getUrl() + ", waiting 1 sec to try again", e);
                     sleep(String.format("%s interrupted", methodName));
                 } else if (e.getMessage() != null && e.getMessage().contains("Exceeded limit request per minute")) {
                     logError("Exceeded limit request per minute, waiting 1 minute");
@@ -86,8 +88,6 @@ public class DSXUtils {
     public static Exchange createExchange() throws IOException {
 
         ExchangeSpecification exSpec = new ExchangeSpecification(DSXExchange.class);
-
-        ExchangeProperties properties = CONFIG.getExchangeProperties();
 
         if (properties != null) {
             if (properties.getSecretKey() != null && properties.getApiKey() != null) {
