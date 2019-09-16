@@ -71,7 +71,7 @@ public class AveragePriceRepository {
             this.exchange = exchange;
             this.lastPrice = null;
             this.lastUpdate = 0L;
-            this.updateDelay = 1000 * DSXUtils.getRateLimitFromProperties(AtsMain.RATE_LIMIT_CONFIG,
+            this.updateDelay = 1000 * DSXUtils.getRateLimitFromProperties(DSXUtils.RATE_LIMIT_CONFIG,
                     exchange.getDefaultExchangeSpecification().getExchangeName());
         }
 

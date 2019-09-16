@@ -111,12 +111,12 @@ class Algorithm {
         }
     }
 
-    private BigDecimal getExchangeRate(CurrencyPair tradePair, CurrencyPair indicativePair) throws Exception {
-        if (tradePair.equals(indicativePair)) {
+    private BigDecimal getExchangeRate(CurrencyPair indicativePair) throws Exception {
+        if (DSX_CURRENCY_PAIR.equals(indicativePair)) {
             return BigDecimal.ONE;
         }
 
-        BigDecimal exchangeRate = marketDataRepository.getExchangeRate(tradePair, indicativePair);
+        BigDecimal exchangeRate = marketDataRepository.getExchangeRate(indicativePair);
 
         if (exchangeRate == null) {
             logInfo(String.format("\t Unable to get exchange rate for currencies: %s/%s", DSX_CURRENCY_PAIR.counter, EXCHANGES_CURRENCY_PAIR.counter));
@@ -155,7 +155,7 @@ class Algorithm {
                 return false;
             }
 
-            BigDecimal exchangeRate = getExchangeRate(DSX_CURRENCY_PAIR, EXCHANGES_CURRENCY_PAIR);
+            BigDecimal exchangeRate = getExchangeRate(EXCHANGES_CURRENCY_PAIR);
 
             if (exchangeRate == null) {
                 logInfo("\t Can't access to exchange rate");

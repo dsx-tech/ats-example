@@ -15,6 +15,7 @@ import uk.dsx.ats.repositories.MarketDataRepository;
 import uk.dsx.ats.repositories.TradeRepository;
 import uk.dsx.ats.utils.*;
 
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -28,8 +29,6 @@ public class AtsMain {
 
     public static final Logger logInfo = LogManager.getLogger("info-log");
     public static final Logger logAudit = LogManager.getLogger("audit-log");
-
-    public static final String RATE_LIMIT_CONFIG = "../rateLimit.json";
 
     public static void main(String[] args) throws Exception {
         Algorithm algorithm;
