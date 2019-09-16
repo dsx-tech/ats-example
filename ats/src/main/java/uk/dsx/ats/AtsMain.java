@@ -29,7 +29,7 @@ public class AtsMain {
     public static final Logger logInfo = LogManager.getLogger("info-log");
     public static final Logger logAudit = LogManager.getLogger("audit-log");
 
-    public static final String RATE_LIMIT_CONFIG = "rateLimit.json";
+    public static final String RATE_LIMIT_CONFIG = "../rateLimit.json";
 
     public static void main(String[] args) throws Exception {
         Algorithm algorithm;
