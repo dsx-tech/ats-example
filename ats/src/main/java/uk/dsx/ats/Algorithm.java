@@ -1,117 +1,100 @@
 package uk.dsx.ats;
 
-import lombok.Value;
-import org.apache.logging.log4j.Logger;
-import org.knowm.xchange.Exchange;
 import org.knowm.xchange.currency.CurrencyPair;
 import org.knowm.xchange.dsx.dto.trade.DSXOrderStatusResult;
-import org.knowm.xchange.dsx.service.DSXTradeService;
-import org.knowm.xchange.dto.Order;
 import org.knowm.xchange.dto.account.Balance;
-import org.knowm.xchange.dto.trade.LimitOrder;
-import org.knowm.xchange.exceptions.ExchangeException;
-import org.knowm.xchange.service.marketdata.MarketDataService;
-import uk.dsx.ats.data.AlgorithmArgs;
+import org.knowm.xchange.dto.marketdata.OrderBook;
 import uk.dsx.ats.data.PriceProperties;
-import uk.dsx.ats.utils.DSXUtils;
+import uk.dsx.ats.repositories.AccountRepository;
+import uk.dsx.ats.repositories.AveragePriceRepository;
+import uk.dsx.ats.repositories.MarketDataRepository;
+import uk.dsx.ats.repositories.TradeRepository;
+import uk.dsx.ats.utils.*;
 
-import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Date;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
 
-import static uk.dsx.ats.AtsMain.*;
 import static uk.dsx.ats.utils.DSXUtils.*;
 
 /**
  * @author Mikhail Wall
  */
 
-@Value
 class Algorithm {
 
-    private static final BigDecimal LOW_VOLUME = new BigDecimal("0.1");
-
-    AlgorithmArgs args;
-    Logger logInfo;
-    Logger logAudit;
-    Date date;
-
-    Algorithm(AlgorithmArgs args, Logger logInfo, Logger logAudit, Date date) {
-        this.args = args;
-        this.logInfo = logInfo;
-        this.logAudit = logAudit;
-        this.date = date;
+    enum OrderCheckingResult {
+        ORDER_FILLED,
+        NEED_REPLACE_ORDER,
+        ACCEPTABLE_ORDER_PRICE
     }
 
-    private BigDecimal getBidOrderHighestPriceDSX() throws IOException {
-        List<LimitOrder> bids = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
-        LimitOrder highestBid;
-        highestBid = bids.get(0);
-        return highestBid.getLimitPrice();
+    interface CancelOrderPolicy {
+        boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook);
     }
 
-    private List<LimitOrder> getBidOrders(Exchange exchange, CurrencyPair currencyPair) throws IOException {
-        MarketDataService marketDataService = exchange.getMarketDataService();
-        List<LimitOrder> orders = marketDataService.getOrderBook(currencyPair, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-        while (orders.isEmpty()) {
-            orders = marketDataService.getOrderBook(currencyPair, PRICE_PROPERTIES.getDsxAccountType()).getBids();
-            logInfo("DSX orderbook is empty, waiting for orderbook appearance");
-            DSXUtils.sleep("Request to get orderbook interrupted");
+    private final MarketDataRepository marketDataRepository;
+    private final TradeRepository tradeRepository;
+    private final AccountRepository accountRepository;
+    private final List<CancelOrderPolicy> cancelOrderPolicies;
+    private final AveragePriceRepository averagePriceRepository;
+    private final PriceProperties priceProperties;
+
+    Algorithm(PriceProperties priceProperties, MarketDataRepository marketDataRepository, TradeRepository tradeRepository, AccountRepository accountRepository, AveragePriceRepository averagePriceRepository) {
+        this.marketDataRepository = marketDataRepository;
+        this.tradeRepository = tradeRepository;
+        this.accountRepository = accountRepository;
+        this.priceProperties = priceProperties;
+
+        this.cancelOrderPolicies = Arrays.asList(
+                new SingleBidRow(),
+                new StepToMove(priceProperties.getStepToMove()),
+                new VolumeToMove(priceProperties.getVolumeToMove()),
+                new Sensitivity(priceProperties.getSensitivity()),
+                new PriceHasBeenChanged()
+        );
+        this.averagePriceRepository = averagePriceRepository;
+    }
+
+    boolean execute() throws Exception {
+        tradeRepository.cancelAllOrders();
+
+        logInfo("Account funds: {}", accountRepository.getBalance());
+
+        //waiting for our price to be better than average price on supported exchanges
+        BigDecimal bestBidPrice = new PriceMonitor().awaitAcceptablePrice();
+
+        //calculating data for placing order on our exchange
+        BigDecimal orderPrice = bestBidPrice.add(priceProperties.getPriceAddition());
+        BigDecimal orderVolume = calculateAvailableVolume(accountRepository.getBalance(), orderPrice, priceProperties.getVolumeScale());
+
+        if (orderVolume.compareTo(priceProperties.getMinOrderSize()) < 0) {
+            logError("Couldn't place order. Not enough money.");
+            return true;
         }
 
-        return orders;
-    }
+        //placing order
+        String orderId = tradeRepository.buyLimit(orderVolume, DSX_CURRENCY_PAIR, orderPrice);
+        logInfo("Order with id {} was placed", orderId);
 
-    private int getOrderIndex(BigDecimal price, List<LimitOrder> orders) {
+        OrderStateChecker orderChecker = new OrderStateChecker(Long.parseLong(orderId));
 
-        return IntStream.range(0, orders.size())
-                .filter(i -> orders.get(i).getLimitPrice().compareTo(price) == 0)
-                .findFirst().orElse(-1);
-    }
-
-    private BigDecimal getPriceAfterOrderDSX(BigDecimal price) throws IOException {
-
-        List<LimitOrder> orders = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
-
-        BigDecimal priceAfterUserOrder = null;
-
-        int orderIndex = getOrderIndex(price, orders);
-
-        // take order price after user's order
-        if (orders.size() - 1 > orderIndex)
-            priceAfterUserOrder = orders.get(orderIndex + 1).getLimitPrice();
-
-        return priceAfterUserOrder;
-    }
-
-    private BigDecimal getVolumeBeforeOrderDSX(BigDecimal price) throws IOException {
-        BigDecimal volume = BigDecimal.ZERO;
-
-        List<LimitOrder> orders = getBidOrders(args.getDsxExchange(), DSX_CURRENCY_PAIR);
-        for (LimitOrder order : orders) {
-            if ((order.getLimitPrice().compareTo(price) > 0) && (order.getRemainingAmount() != null)) {
-                volume = volume.add(order.getRemainingAmount());
-            }
+        if (orderChecker.awaitStateChanged() == OrderCheckingResult.ORDER_FILLED) {
+            return true;
+        } else {
+            logInfo("Cancelling order");
+            tradeRepository.cancelOrder(orderId);
+            return false;
         }
-        return volume;
     }
 
-    void cancelAllOrders(DSXTradeService tradeService) throws Exception {
-        // set limit order return value for placing new order
-        args.setOrderId(0L);
-        args.setLimitOrderReturnValue(null);
-        // setting average price to null for updating dsx price, when cancelling order
-        args.setAveragePrice(null);
-
-        DSXUtils.unlimitedRepeatableRequest("cancelAllOrders", tradeService::cancelAllOrders);
-        logInfo("Cancelled all active account orders");
+    private BigDecimal calculateAvailableVolume(Balance balance, BigDecimal orderPrice, int volumeScale) {
+        return balance.getAvailable().divide(orderPrice, volumeScale, RoundingMode.DOWN);
     }
 
-    private void printOrderStatus(int orderStatus) {
+    private void logOrderStatus(int orderStatus) {
         switch (orderStatus) {
             case 0:
                 logInfo("Actual order status: Active");
@@ -128,207 +111,234 @@ class Algorithm {
         }
     }
 
-    private boolean checkPriceBeforeOrder(BigDecimal orderPrice, BigDecimal priceBeforeOrder, BigDecimal stepToMove) {
-        return priceBeforeOrder != null && orderPrice.subtract(priceBeforeOrder).abs().compareTo(stepToMove) > 0;
-    }
-
-    private boolean checkPriceAfterOrder(BigDecimal priceAfterOrder, BigDecimal rate, BigDecimal sensitivity) {
-        return priceAfterOrder != null && rate.subtract(priceAfterOrder).compareTo(sensitivity) > 0;
-    }
-
-    private boolean checkVolumeBeforeOrder(BigDecimal volumeBeforeOrder, BigDecimal volumeToMove) {
-        return volumeBeforeOrder.compareTo(volumeToMove) >= 0;
-    }
-
-    boolean executeAlgorithm() throws Exception {
-        PriceProperties priceConstants = args.getPriceProperties();
-
-        Balance balance = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
-                getFunds(args.getDsxExchange(), DSX_CURRENCY_PAIR.counter));
-
-        logInfo("Account funds: {}", balance);
-        //waiting for our price to be better than average price on supported exchanges
-        awaitGoodPrice();
-
-        //calculating data for placing order on our exchange
-        BigDecimal dsxPriceWithAddition = args.getDsxPrice().add(priceConstants.getPriceAddition());
-
-        BigDecimal volume = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
-                getFunds(args.getDsxExchange(), DSX_CURRENCY_PAIR.counter).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
-                        RoundingMode.DOWN));
-
-        // condition for not printing volume, when this is redundant
-        if (volume.compareTo(LOW_VOLUME) > 0) {
-
-            cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
-            volume = DSXUtils.unlimitedRepeatableRequest("getFunds", () ->
-                    getFunds(args.getDsxExchange(), DSX_CURRENCY_PAIR.counter).getAvailable().divide(dsxPriceWithAddition, priceConstants.getVolumeScale(),
-                            RoundingMode.DOWN));
-            logInfo("Cancelled all previous orders in case there was placed order");
-            logInfo("Buying volume: {}", volume);
+    private BigDecimal getExchangeRate(CurrencyPair indicativePair) throws Exception {
+        if (DSX_CURRENCY_PAIR.equals(indicativePair)) {
+            return BigDecimal.ONE;
         }
 
-        try {
-            //check if we have enough money to place order
-            if (volume.compareTo(LOW_VOLUME) < 0) {
+        BigDecimal exchangeRate = marketDataRepository.getExchangeRate(indicativePair);
 
-                //we don't have enough money to place order
-                //if we have previously placed order we should check it's status
-                if (args.getOrderId() != 0L) {
-                    // if order status is filled - algorithm executed successfully
-                    int orderStatus = DSXUtils.unlimitedRepeatableRequest("getOrderStatus", () ->
-                            args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
-
-                    if (orderStatus == 1) {
-                        logInfo("Order status is filled");
-                        return true;
-                    }
-                } else {
-                    //if we don't have any order it means there is not enough money on our account. Algorithm stopping.
-                    logError("Couldn't place order. Not enough money.");
-                    return true;
-                }
-            }
-            if (args.getLimitOrderReturnValue() == null && dsxPriceWithAddition.compareTo(args.getPriceProperties().getMaxPrice()) < 0) {
-                //place new order
-                BigDecimal finalVolume = volume;
-                String limitOrderReturnValue = DSXUtils.unlimitedRepeatableRequest("placeLimitOrder", () ->
-                        args.getTradeService().placeLimitOrder(new LimitOrder(Order.OrderType.BID, finalVolume, DSX_CURRENCY_PAIR,
-                                "", date, dsxPriceWithAddition)));
-                args.setOrderPrice(dsxPriceWithAddition);
-                logInfo("Order with id {} was placed", limitOrderReturnValue);
-                args.setLimitOrderReturnValue(limitOrderReturnValue);
-            }
-
-            args.setOrderId(Long.parseLong(args.getLimitOrderReturnValue()));
-
-            //sleep some time before checking order status
-            TimeUnit.SECONDS.sleep(priceConstants.getWaitingTimeForOrderCheck());
-
-            //get actual order status
-            if (args.getOrderId() != 0L) {
-                DSXOrderStatusResult result = DSXUtils.unlimitedRepeatableRequest("getOrderStatus", () ->
-                        args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()));
-                printOrderStatus(result.getStatus());
-
-                BigDecimal priceBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX",
-                        this::getBidOrderHighestPriceDSX);
-
-                // Order status == Filled - algorithm executed correctly
-                if (result.getStatus() == 1) {
-                    logInfo("Order was filled");
-                    return true;
-                }
-
-                // if order status not filled - check that order is actual (top bid or so and price is good).
-                BigDecimal volumeBeforeOrder = DSXUtils.unlimitedRepeatableRequest("getVolumeBeforeVolume", () ->
-                        getVolumeBeforeOrderDSX(result.getRate()));
-
-                BigDecimal priceAfterOrder = DSXUtils.unlimitedRepeatableRequest("getPriceAfterOrderDSX", () ->
-                        getPriceAfterOrderDSX(result.getRate()));
-
-                // good means that difference between user's order price and order's price after is less than sensitivity
-                boolean isPriceAfterOrderGood = checkPriceAfterOrder(
-                        priceAfterOrder,
-                        result.getRate(),
-                        priceConstants.getSensitivity());
-
-                // good means that difference between user's order price and order's price before is less than step to move
-                boolean isPriceBeforeOrderGood = checkPriceBeforeOrder(
-                        result.getRate(),
-                        priceBeforeOrder,
-                        priceConstants.getStepToMove());
-
-                boolean isVolumeGood = checkVolumeBeforeOrder(volumeBeforeOrder, priceConstants.getVolumeToMove());
-
-                if (isPriceBeforeOrderGood || isVolumeGood || isPriceAfterOrderGood) {
-                    //if price is good and order needs to be replaced (with better price). check order status again
-                    int orderStatus = DSXUtils.unlimitedRepeatableRequest("getOrderStatus", () ->
-                            args.getDsxTradeServiceRaw().getOrderStatus(args.getOrderId()).getStatus());
-
-                    printOrderStatus(orderStatus);
-                    // if order status is not filled or killed, then cancel order so we can place another order
-                    if (orderStatus != 1 && orderStatus != 2) {
-                        DSXUtils.unlimitedRepeatableRequest("cancelOrder", () ->
-                                args.getTradeService().cancelOrder(args.getLimitOrderReturnValue()));
-                        logInfo("Cancelling order, because better price exists");
-                        args.setOrderId(0L);
-                        args.setAveragePrice(null);
-                    }
-                    args.setLimitOrderReturnValue(null);
-                }
-            }
-        } catch (ExchangeException e) {
-            logErrorWithException("Exchange exception: {}", e);
+        if (exchangeRate == null) {
+            logInfo(String.format("\t Unable to get exchange rate for currencies: %s/%s", DSX_CURRENCY_PAIR.counter, EXCHANGES_CURRENCY_PAIR.counter));
+            return null;
+        } else {
+            return exchangeRate.multiply(priceProperties.getFxPercentage());
         }
-        return false;
     }
 
+    /**
+     * Check if averagePrice > dsx.bestBid * pricePercentage * exchangeRate
+     */
+    class PriceMonitor {
 
-    private void awaitGoodPrice() throws Exception {
-        PriceProperties priceProperties = args.getPriceProperties();
+        BigDecimal awaitAcceptablePrice() throws Exception {
+            while (true) {
+                logInfo(" - Average price is checking");
+                BigDecimal bestBidPrice = new OrderBookHelper(marketDataRepository.getOrderBook()).bestBidPrice();
+                BigDecimal averagePrice = averagePriceRepository.getAveragePrice();
 
-        while (args.getAveragePrice() == null || isDSXPriceBad(priceProperties)) {
-            //get new average price from other exchanges
-            args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
-                    priceProperties.getPriceScale()));
-
-            //get DSX price
-            args.setDsxPrice(DSXUtils.unlimitedRepeatableRequest("getBidOrderHighestPriceDSX",
-                    this::getBidOrderHighestPriceDSX));
-
-
-            if (args.getAveragePrice() != null) {
-                if (!DSX_CURRENCY_PAIR.equals(EXCHANGES_CURRENCY_PAIR))
-                    logInfo("Average price: {} ({}), dsxPrice: {} ({}), fiat exchange rate: {}",
-                            args.getAveragePrice().divide(args.getFxRate(), priceProperties.getPriceScale(), RoundingMode.DOWN),
-                            DSX_CURRENCY_PAIR, args.getDsxPrice(), DSX_CURRENCY_PAIR, args.getFxRate());
-                else
-                    logInfo("Average price: {} ({}), dsxPrice: {} ({})",
-                            args.getAveragePrice(), EXCHANGES_CURRENCY_PAIR, args.getDsxPrice(), DSX_CURRENCY_PAIR);
-
-                //if DSX price is bad
-                if (isDSXPriceBad(priceProperties)) {
-                    //if we have previously placed order - we should kill it or it can be filled by bad price.
-                    if (args.getOrderId() != 0L) {
-                        try {
-                            cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
-                            logInfo("Previous order was cancelled, because it had bad price");
-                        } catch (ExchangeException e) {
-                            logError("Order was already filled or killed.");
-                            return;
-                        }
-                        args.setOrderId(0L);
-                    }
-                    logInfo("Cannot execute order. Waiting for price changing...");
-                    //if DSX price is bad - waiting
-                    TimeUnit.MILLISECONDS.sleep(priceProperties.getAveragePriceUpdateTime());
+                if (isPriceAcceptable(bestBidPrice, averagePrice)) {
+                    return bestBidPrice;
                 }
+                TimeUnit.MILLISECONDS.sleep(priceProperties.getAveragePriceUpdateTime());
+            }
+        }
+
+        boolean isPriceAcceptable(BigDecimal bestBid, BigDecimal averagePrice) throws Exception {
+            if (averagePrice == null) {
+                logInfo("\t Can't calculate average price");
+                return false;
+            }
+
+            if (bestBid == null) {
+                logInfo("\t Low DSX liquidity for {}", PRICE_PROPERTIES.getDsxCurrencyPair());
+                return false;
+            }
+
+            BigDecimal exchangeRate = getExchangeRate(EXCHANGES_CURRENCY_PAIR);
+
+            if (exchangeRate == null) {
+                logInfo("\t Can't access to exchange rate");
+                return false;
             } else {
-                // if we cannot get price from any exchange than cancel order, bcs average price can become better
-                cancelAllOrders((DSXTradeService) args.getDsxTradeServiceRaw());
-                logInfo("Waiting for connection to exchanges");
-                DSXUtils.sleep("Sleep was interrupted");
+                BigDecimal pricePercentage = priceProperties.getPricePercentage();
+                BigDecimal bidWithOffset = bestBid.multiply(pricePercentage).multiply(exchangeRate);
+                logInfo("\t Average price = {}; Relative offset = {}; Best bid = {} (multiplied = {})", averagePrice, pricePercentage, bestBid, bidWithOffset);
+                return averagePrice.compareTo(bidWithOffset) > 0;
             }
         }
     }
 
-    private boolean isDSXPriceBad(PriceProperties priceProperties) {
-        args.setAveragePrice(AVERAGE_PRICE.getAveragePrice(priceProperties.getTimestampForPriceUpdate(),
-                priceProperties.getPriceScale()));
-        BigDecimal averagePrice = args.getAveragePrice();
-        BigDecimal dsxPrice = args.getDsxPrice();
+    class OrderStateChecker {
 
-        BigDecimal fxMultiplier = BigDecimal.ONE;
-        // if DSX currency is not equal to currency pair on other exchanges, get currency exchange rate and multiply it by currency exchange fee
-        if (!DSX_CURRENCY_PAIR.equals(EXCHANGES_CURRENCY_PAIR)) {
-            if (args.getFxRate() == null) {
-                logInfo(String.format("Unable to get exchange rate for currencies: %s/%s", DSX_CURRENCY_PAIR.counter, EXCHANGES_CURRENCY_PAIR.counter));
-                return true;
-            }
-            fxMultiplier = args.getFxRate().multiply(priceProperties.getFxPercentage());
+        private final long orderId;
+
+        OrderStateChecker(long orderId) {
+            this.orderId = orderId;
         }
 
-        return averagePrice == null || averagePrice.compareTo(dsxPrice.multiply(priceProperties.getPricePercentage()).multiply(fxMultiplier)) < 0;
+        OrderCheckingResult awaitStateChanged() throws Exception {
+            while (true) {
+                logInfo("");
+                logInfo("================ Checking order state");
+                OrderCheckingResult result = checkOrder();
+                if (result == OrderCheckingResult.ACCEPTABLE_ORDER_PRICE) {
+                    logInfo("All conditions are good.");
+                    TimeUnit.SECONDS.sleep(priceProperties.getWaitingTimeForOrderCheck());
+                } else {
+                    return result;
+                }
+            }
+        }
+
+        private OrderCheckingResult checkOrder() throws Exception {
+            DSXOrderStatusResult order = tradeRepository.getOrderStatus(orderId);
+
+            logOrderStatus(order.getStatus());
+
+            // Order status == Filled - algorithm executed correctly
+            if (order.getStatus() == 1) {
+                logInfo("Order was filled");
+                return OrderCheckingResult.ORDER_FILLED;
+            } else {
+                logInfo("Price = {}; Volume = {}/{}", order.getRate(), order.getRemainingVolume(), order.getVolume());
+            }
+
+            OrderBook orderBook = marketDataRepository.getOrderBook();
+
+            return cancelOrderPolicies.stream().anyMatch(policy -> policy.shouldCancelOrder(order, orderBook))
+                    ? OrderCheckingResult.NEED_REPLACE_ORDER
+                    : OrderCheckingResult.ACCEPTABLE_ORDER_PRICE;
+        }
+    }
+
+    /**
+     * The order has to be cancelled if: there is no any other orders (by different prices)
+     */
+    static class SingleBidRow implements CancelOrderPolicy {
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            return orderBook.getBids().size() < 2;
+        }
+    }
+
+    /**
+     * The order has to be cancelled if initial conditions are broken
+     */
+    class PriceHasBeenChanged implements CancelOrderPolicy {
+
+        private final PriceMonitor priceMonitor;
+
+        PriceHasBeenChanged() {
+            priceMonitor = new PriceMonitor();
+        }
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            logInfo(" - Average price is checking");
+            OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
+            try {
+                BigDecimal averagePrice = averagePriceRepository.getAveragePrice();
+                return !priceMonitor.isPriceAcceptable(orderBookHelper.bestBidPrice(), averagePrice);
+            } catch (Exception e) {
+                logError("\t Impossible to check average price: {}", e);
+                return false;
+            }
+        }
+    }
+
+    /**
+     * The order has to be cancelled if: sum(betterBidOrders.volume) > volumeToMove
+     */
+    static class VolumeToMove implements CancelOrderPolicy {
+
+        private final BigDecimal maxVolumeAbove;
+
+        VolumeToMove(BigDecimal maxVolumeAbove) {
+            this.maxVolumeAbove = maxVolumeAbove;
+        }
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            logInfo(" - VolumeToMove checking");
+
+            OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
+            BigDecimal bidVolumeAbove = orderBookHelper.bidVolumeAbove(order.getRate());
+
+            if (bidVolumeAbove == null) {
+                logInfo("\t Bids above are null");
+                return false;
+            }
+
+            logInfo("\t Bid volume above order = {}; Maximum volume above = {}",
+                    bidVolumeAbove, maxVolumeAbove);
+
+            return bidVolumeAbove.compareTo(maxVolumeAbove) >= 0;
+        }
+    }
+
+    /**
+     * The order has to be cancelled if:  bestBidOrder.price - ourOrder.price > stepToMove
+     */
+    static class StepToMove implements CancelOrderPolicy {
+
+        private final BigDecimal maxDistanceToBestBid;
+
+        StepToMove(BigDecimal maxDistanceToBestBid) {
+            this.maxDistanceToBestBid = maxDistanceToBestBid;
+        }
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            logInfo(" - StepToMove checking");
+
+            OrderBookHelper bookHelper = new OrderBookHelper(orderBook);
+            BigDecimal bestBid = bookHelper.bestBidPrice();
+
+            if (bestBid == null) {
+                logInfo("\t Best bid is null");
+                return false;
+            }
+
+            BigDecimal distanceToBestBid = bestBid.subtract(order.getRate());
+
+            logInfo("\t Best bid price = {}; Distance to best bid = {}; Maximum distance = {}",
+                    bestBid, distanceToBestBid, maxDistanceToBestBid);
+
+            return distanceToBestBid.compareTo(maxDistanceToBestBid) > 0;
+        }
+    }
+
+    /**
+     * The order has to be cancelled if:  ourOrder.price - nextBidOrder.price > sensitivity
+     */
+    static class Sensitivity implements CancelOrderPolicy {
+
+        private final BigDecimal maxDistanceToNextOrder;
+
+        Sensitivity(BigDecimal maxDistanceToNextOrder) {
+            this.maxDistanceToNextOrder = maxDistanceToNextOrder;
+        }
+
+        @Override
+        public boolean shouldCancelOrder(DSXOrderStatusResult order, OrderBook orderBook) {
+            logInfo(" - Sensitivity checking");
+
+            OrderBookHelper orderBookHelper = new OrderBookHelper(orderBook);
+            BigDecimal nextBidPrice = orderBookHelper.getBidPriceAfter(order.getRate());
+
+            if (nextBidPrice == null) {
+                logInfo("\t There is no any bid after order");
+                return false;
+            }
+
+            BigDecimal distanceToNextOrder = order.getRate().subtract(nextBidPrice);
+
+            logInfo("\t Next bid price = {}; Distance to next bid (distanceToNextOrder) = {}; Maximum distance (Sensitivity) = {}",
+                    nextBidPrice, distanceToNextOrder, maxDistanceToNextOrder);
+
+            return distanceToNextOrder.compareTo(maxDistanceToNextOrder) > 0;
+        }
     }
 }

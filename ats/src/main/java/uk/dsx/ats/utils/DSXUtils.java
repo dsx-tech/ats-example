@@ -22,6 +22,7 @@ import java.io.*;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
+import java.nio.file.Paths;
 import java.security.cert.CertificateException;
 import java.util.concurrent.TimeUnit;
 
@@ -31,16 +32,17 @@ import java.util.concurrent.TimeUnit;
 
 @Log4j2
 public class DSXUtils {
-
-    private static final String CONFIG_FILE = "config.json";
+    private static final String CONFIG_FILE = Paths.get("..", "config.json").toString();
+    public static final String RATE_LIMIT_CONFIG = Paths.get("..", "rateLimit.json").toString();
 
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT = 60;
+    private final static Config CONFIG = DSXUtils.getPropertiesFromConfig(CONFIG_FILE);
+    private final static ExchangeProperties properties = CONFIG.getExchangeProperties();
 
-    private static Config CONFIG = DSXUtils.getPropertiesFromConfig(CONFIG_FILE);
-    public static PriceProperties PRICE_PROPERTIES = CONFIG.getPriceProperties();
-    public static CurrencyPair DSX_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getDsxCurrencyPair());
-    public static CurrencyPair EXCHANGES_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getExchangesCurrencyPair());
+    public final static PriceProperties PRICE_PROPERTIES = CONFIG.getPriceProperties();
+    public final static CurrencyPair DSX_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getDsxCurrencyPair());
+    public final static CurrencyPair EXCHANGES_CURRENCY_PAIR = new CurrencyPair(PRICE_PROPERTIES.getExchangesCurrencyPair());
 
     @FunctionalInterface
     public interface ConnectorRequest<T> {
@@ -48,16 +50,17 @@ public class DSXUtils {
     }
 
     public static <T> T unlimitedRepeatableRequest(String methodName, ConnectorRequest<T> requestObject) throws Exception {
+
         while (!Thread.interrupted()) {
             try {
                 return requestObject.get();
             } catch (UnknownHostException | SocketTimeoutException | HttpStatusIOException
                     | NonceException | CertificateException | SSLHandshakeException | SocketException e) {
-                logError("Connection to dsx.uk disappeared, waiting 1 sec to try again", e.getMessage());
+                logError("Connection to " + properties.getUrl() + " disappeared, waiting 1 sec to try again", e.getMessage());
                 sleep(String.format("%s interrupted", methodName));
             } catch (Exception e) {
                 if (e.getMessage() != null && e.getMessage().contains("418")) {
-                    logErrorWithException("Cannot connect to dsx.uk, waiting 1 sec to try again", e);
+                    logErrorWithException("Cannot connect to" + properties.getUrl() + ", waiting 1 sec to try again", e);
                     sleep(String.format("%s interrupted", methodName));
                 } else if (e.getMessage() != null && e.getMessage().contains("Exceeded limit request per minute")) {
                     logError("Exceeded limit request per minute, waiting 1 minute");
@@ -86,8 +89,6 @@ public class DSXUtils {
     public static Exchange createExchange() throws IOException {
 
         ExchangeSpecification exSpec = new ExchangeSpecification(DSXExchange.class);
-
-        ExchangeProperties properties = CONFIG.getExchangeProperties();
 
         if (properties != null) {
             if (properties.getSecretKey() != null && properties.getApiKey() != null) {

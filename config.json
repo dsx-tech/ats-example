@@ -7,6 +7,7 @@
   "PriceConfig": {
     "exchangesCurrencyPair": "BTC/USD",
     "dsxCurrencyPair": "BTC/EUR",
+    "minOrderSize": "0.1",
     "pricePercentage": "1.01",
     "fxPercentage": "1.01",
     "priceScale": 5,

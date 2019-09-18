@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class PriceProperties {
 
+    public static final BigDecimal MIN_ORDER_SIZE = new BigDecimal("0.001");
     public static final String DEFAULT_DSX_CURRENCY_PAIR = "BTC/EUR";
     public static final String DEFAULT_EXCHANGES_CURRENCY_PAIR = "BTC/USD";
     public static final BigDecimal DEFAULT_STEP_TO_MOVE = new BigDecimal("0.001");
@@ -30,6 +31,7 @@ public class PriceProperties {
     public static final BigDecimal DEFAULT_SENSITIVITY = new BigDecimal("5");
     public static final BigDecimal DEFAULT_MAX_PRICE = new BigDecimal("20000");
 
+    BigDecimal minOrderSize = MIN_ORDER_SIZE;
     String dsxCurrencyPair = DEFAULT_DSX_CURRENCY_PAIR;
     String exchangesCurrencyPair = DEFAULT_EXCHANGES_CURRENCY_PAIR;
     BigDecimal pricePercentage = DEFAULT_PRICE_PERCENTAGE;

@@ -23,8 +23,7 @@ For using this ATS you can run sh scripts.
 Run startAts.bat script in command line
 
 #### Config and rateLimit json files usage
-Files config.json and rateLimit.json in ats-example are used for AtsMain class. Files config.json and rateLimit.json in 
-ats folder are used for AtsAlgoTest class, i.e. for testing purposes.
+Files config.json and rateLimit.json in ats-example are used for AtsMain class.
 #### Clarification of config.json
         "url" : dsx.uk api address. Can be changed, that's why it's in properties.
         
@@ -35,7 +34,9 @@ ats folder are used for AtsAlgoTest class, i.e. for testing purposes.
         "exchangesCurrencyPair": Currency pair to check on other exchanges, e.g. "BTC/USD",
         
         "dsxCurrencyPair": Currency pair to trade on DSX, e.g. "BTC/EUR",
-  
+        
+        "minOrderSize": minimum order size, e.g. "0.001",
+        
         "pricePercentage": percentage, for which multiply dsx price bid order for condition checking. 
         For example - "1.01" will check if bid order average bigger than dsx bid order * 1.01,
   
