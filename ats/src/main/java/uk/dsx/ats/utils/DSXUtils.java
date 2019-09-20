@@ -32,8 +32,8 @@ import java.util.concurrent.TimeUnit;
 
 @Log4j2
 public class DSXUtils {
-    private static final String CONFIG_FILE = Paths.get("..", "config.json").toString();
-    public static final String RATE_LIMIT_CONFIG = Paths.get("..", "rateLimit.json").toString();
+    private static final String CONFIG_FILE = Paths.get("config.json").toString();
+    public static final String RATE_LIMIT_CONFIG = Paths.get("rateLimit.json").toString();
 
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS = 10;
     private static final int REQUEST_TO_DSX_TIMEOUT_SECONDS_LIMIT = 60;
